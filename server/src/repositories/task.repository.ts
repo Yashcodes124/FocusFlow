@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
+import prisma from "../lib/prisma.js";
 
-export type TaskStatus = "Todo" | "In Progress" | "Completed";
-export type TaskPriority = "Low" | "Medium" | "High";
+export type TaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED";
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
 export interface TaskRecord {
   id: string;
@@ -40,18 +41,8 @@ export interface CreateTaskRepositoryData {
   tagIds: string[];
 }
 
-export const createTask = async (
-  data: CreateTaskRepositoryData,
-): Promise<TaskRecord> => {
-  const task: TaskRecord = {
-    id: randomUUID(),
-    ...data,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  taskStore.push(task);
-  return task;
+export const createTask = async (data: CreateTaskRepositoryData) => {
+  return await prisma.task.create({
+    data,
+  });
 };
-
-

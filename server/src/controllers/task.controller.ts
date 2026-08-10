@@ -4,7 +4,13 @@ import { createTaskService } from "../services/task.service.js";
 
 export const createTaskController = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.userId ?? "demo-user";
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
     const task = await createTaskService(req.body, userId);
 
     return res.status(201).json({
