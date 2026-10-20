@@ -2,12 +2,17 @@
 //don't know DB
 
 import type { Request, Response } from "express";
-import { createUserService, getUserById } from "../services/user.service.js";
-import { registerUserSchema } from "../validators/user.validator.js";
-import { createUser } from "../repositories/user.repository.js";
-import { success, ZodError } from "zod";
-import { get } from "node:http";
-import { use } from "react";
+import {
+  createUserService,
+  getUserById,
+  loginUser,
+} from "../services/user.service.js";
+import {
+  loginUserSchema,
+  registerUserSchema,
+} from "../validators/user.validator.js";
+import { generateToken } from "../utils/jwt.js";
+import { ZodError } from "zod";
 
 type UserParams = {
   id: string;
@@ -21,6 +26,13 @@ export const getUserByIdController = async (
   req: Request<UserParams>,
   res: Response,
 ) => {
+  if (req.user?.userId !== req.params.id) {
+    return res.status(403).json({
+      success: false,
+      message: "Forbidden",
+    });
+  }
+
   //1.extract the id from the route params(/users/:id)
   const { id } = req.params;
 
@@ -40,28 +52,71 @@ export const createUserController = async (req: Request, res: Response) => {
     const validatedData = registerUserSchema.parse(req.body);
 
     //2.pass the validated data to the bussiness logic
-    const newUser = await createUser(validatedData);
+    const user = await createUserService(validatedData);
+    const token = generateToken(user.id);
 
     //3. return success response(201 created)
     return res.status(201).json({
       success: true,
       message: "User Created Successfully",
-      data: newUser,
+      user,
+      token,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof ZodError) {
       return res.status(400).json({
         success: false,
         message: "Validation failed",
-        errors: error.message,
+        errors: error.flatten().fieldErrors,
       });
     }
 
-    //409 means  Handle conflict error (duplicate email) or general error
-    const statusCode = error.statusCode || 500;
+    const statusCode =
+      error instanceof Error &&
+      "statusCode" in error &&
+      typeof error.statusCode === "number"
+        ? error.statusCode
+        : 500;
     return res.status(statusCode).json({
       success: false,
-      message: error.message || "Internal server error",
+      message:
+        statusCode === 409 ? "User already exists" : "Internal server error",
+    });
+  }
+};
+
+export const loginUserController = async (req: Request, res: Response) => {
+  try {
+    const credentials = loginUserSchema.parse(req.body);
+    const result = await loginUser(credentials);
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      ...result,
+    });
+  } catch (error: unknown) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: error.flatten().fieldErrors,
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message === "Invalid email or password"
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
     });
   }
 };
@@ -78,7 +133,7 @@ export const getMeController = async (req: Request, res: Response) => {
     }
     //fetch the user information
     const user = await getUserById(userId);
-    if (!userId) {
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: "User not found",

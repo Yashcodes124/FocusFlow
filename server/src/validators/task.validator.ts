@@ -20,7 +20,7 @@ export const createTaskSchema = z.object({
     .enum(["Todo", "In Progress", "Completed"])
     .optional()
     .default("Todo"),
-  priority: z.enum(["Low", "Medium", "High"]).optional().default("Medium"),
+  priority: z.enum(["Low", "Medium", "High"]).optional().default("Low"),
   categoryId: z.string().trim().min(1).optional(),
   dueDate: dateValueSchema,
   reminderTime: dateValueSchema,

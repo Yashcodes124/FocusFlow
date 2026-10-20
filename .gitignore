@@ -1,23 +1,25 @@
 # Dependencies
 node_modules/
 
-# Environment
+# Environment and secrets
 .env
 .env.*
+!.env.example
 
-# Prisma generated client (if generated locally)
+# Generated Prisma client
 server/generated/
+
+# Build output and caches
+dist/
+coverage/
+.vite/
 
 # Logs
 *.log
+npm-debug.log*
 
-# Build
-dist/
-
-# OS
+# Operating system and editor files
 .DS_Store
 Thumbs.db
-
-# IDE
 .vscode/
 .idea/
