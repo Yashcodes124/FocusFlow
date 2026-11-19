@@ -1,94 +1,121 @@
-//used for bussiness logic
-//examples: Can user register?
-// Is email already used?
-// Hash password
-// Validate business rules
-// The service should not directly return HTTP responses.
-
 import bcrypt from "bcryptjs";
-import { findUserById } from "../repositories/user.repository.js";
+import { Errors } from "../lib/errors.js";
 import {
-  findUserByEmail,
   createUser,
+  findUserByEmail,
+  findUserById,
+  incrementUserTokenVersion,
+  updateUserProfile,
+  type UserRow,
 } from "../repositories/user.repository.js";
-import type { CreateUserData } from "../repositories/user.repository.js";
-
 import { generateToken } from "../utils/jwt.js";
+import type {
+  LoginUserInput,
+  RegisterUserInput,
+  UpdateProfileInput,
+} from "../validators/user.validator.js";
 
-//when user or  resource not exits
+export interface PublicUser {
+  id: string;
+  name: string;
+  email: string;
+  theme: "light" | "dark";
+  language: "en" | "es" | "fr" | "de";
+  timezone: string;
+  focusDurationMinutes: number;
+  shortBreakMinutes: number;
+  longBreakMinutes: number;
+  isEmailVerified: boolean;
+  hasGoogleLink: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-export const getUserById = async (id: string) => {
-  //1.fetch user form repo
+export function sanitizeUser(user: UserRow): PublicUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    theme: user.theme === "dark" ? "dark" : "light",
+    language:
+      user.language === "es" ||
+      user.language === "fr" ||
+      user.language === "de"
+        ? user.language
+        : "en",
+    timezone: user.timezone,
+    focusDurationMinutes: user.focusDurationMinutes,
+    shortBreakMinutes: user.shortBreakMinutes,
+    longBreakMinutes: user.longBreakMinutes,
+    isEmailVerified: user.isEmailVerified,
+    hasGoogleLink: Boolean(user.firebaseUid),
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+}
+
+export const getUserById = async (id: string): Promise<PublicUser> => {
   const user = await findUserById(id);
-  //2.Busssiness logic : check if user exists
   if (!user) {
-    const error = new Error("User not found");
-    //attach the source code
-    (error as any).statusCode = 404;
-    throw error;
+    throw Errors.notFound("User not found");
   }
-  //OR if(!user) return null;
-
-  // Remove sensitive fields before returning to the controller
-  const { password, ...userWithoutPassword } = user;
-
-  return userWithoutPassword;
+  return sanitizeUser(user);
 };
 
-export type createUserServiceInput = CreateUserData;
-
-//user creation with bussiness validation and passsward hashing
-export const createUserService = async (data: createUserServiceInput) => {
-  //Check if user already exists
-  const existingUser = await findUserByEmail(data.email);
-  if (existingUser) {
-    const error = new Error("User already exists");
-    (error as any).statusCode = 409;
-    throw error;
+export const registerUserService = async (
+  data: RegisterUserInput,
+): Promise<{ user: PublicUser; token: string }> => {
+  const existing = await findUserByEmail(data.email);
+  if (existing) {
+    throw Errors.conflict("An account with this email already exists");
   }
 
-  //if not exists then
-
-  //2. hash passsward
-  const saltRounds = 10;
-  const hashedPassword = await bcrypt.hash(data.password, saltRounds);
-
-  //3. Save the user with the hashed passward
-  const newUser = await createUser({
-    ...data,
-    password: hashedPassword,
+  const passwordHash = await bcrypt.hash(data.password, 12);
+  const created = await createUser({
+    name: data.name,
+    email: data.email,
+    passwordHash,
+    timezone: data.timezone,
   });
 
-  // 4. Omit sensitive information before returning
-  const { password, ...userWithoutPassword } = newUser;
-  return userWithoutPassword;
-};
-
-// ========================== Set Login =================================
-
-export const loginUser = async (data: { email: string; password: string }) => {
-  //1.find the user from DB
-  const user = await findUserByEmail(data.email);
-  if (!user) {
-    //Generic(same) error to prevent email enumeration
-    throw new Error("Invalid email or password");
-  }
-
-  //2.compare the plain passward with hashed password
-  const isMatch = await bcrypt.compare(data.password, user.password);
-  if (!isMatch) {
-    throw new Error("Invalid email or password");
-  }
-
-  //3.Generate JWT token
-  const token = generateToken(user.id);
-
-  //4.send the user (omit password) and token
-  const { password, ...userWithoutPassword } = user;
-
-  //
+  const token = generateToken(created.id, created.tokenVersion);
   return {
-    user: userWithoutPassword,
+    user: sanitizeUser(created),
     token,
   };
+};
+
+export const loginUserService = async (
+  data: LoginUserInput,
+): Promise<{ user: PublicUser; token: string }> => {
+  const user = await findUserByEmail(data.email);
+  if (!user || !user.passwordHash) {
+    throw Errors.unauthorized("Invalid email or password");
+  }
+
+  const isMatch = await bcrypt.compare(data.password, user.passwordHash);
+  if (!isMatch) {
+    throw Errors.unauthorized("Invalid email or password");
+  }
+
+  const token = generateToken(user.id, user.tokenVersion);
+  return {
+    user: sanitizeUser(user),
+    token,
+  };
+};
+
+export const logoutUserService = async (userId: string): Promise<void> => {
+  await incrementUserTokenVersion(userId);
+};
+
+export const updateUserProfileService = async (
+  userId: string,
+  data: UpdateProfileInput,
+): Promise<PublicUser> => {
+  const updated = await updateUserProfile(userId, data);
+  if (!updated) {
+    throw Errors.notFound("User not found");
+  }
+  return sanitizeUser(updated);
 };

@@ -1,154 +1,99 @@
-import React, { useState } from "react";
-import { isAxiosError } from "axios";
-import { authService } from "./features/auth/services/authService";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import { ProtectedRoute, PublicOnlyRoute } from "./components/ProtectedRoute";
+import { AppLayout } from "./components/layout/AppLayout";
+import { LoginPage, RegisterPage } from "./pages/AuthPages";
+import { DashboardPage } from "./pages/DashboardPage";
+import { TasksPage } from "./pages/TasksPage";
+import { HabitsPage } from "./pages/HabitsPage";
+import { FocusPage } from "./pages/FocusPage";
+import { NotesPage } from "./pages/NotesPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
-function App() {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [message, setMessage] = useState("");
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMessage("");
-    try {
-      if (isLogin) {
-        const data = await authService.login({ email, password });
-        setMessage(`Login successful! Welcome back, ${data.user.name}.`);
-      } else {
-        const data = await authService.register({ name, email, password });
-        setMessage(`Registration successful! Welcome, ${data.user.name}.`);
-      }
-    } catch (error: unknown) {
-      const message = isAxiosError<{ message?: string }>(error)
-        ? error.response?.data?.message || error.message
-        : error instanceof Error
-          ? error.message
-          : "An unexpected error occurred";
-      setMessage(`Error: ${message}`);
-    }
-  };
-
+function ProtectedWorkspace({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "#121212",
-        color: "#fff",
-        fontFamily: "sans-serif",
-      }}
-    >
-      <div
-        style={{
-          background: "#1e1e1e",
-          padding: "2rem",
-          borderRadius: "8px",
-          width: "320px",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
-        }}
-      >
-        <h2 style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-          {isLogin ? "Focus Flow Login" : "Register"}
-        </h2>
+    <ProtectedRoute>
+      <AppLayout>{children}</AppLayout>
+    </ProtectedRoute>
+  );
+}
 
-        <form
-          onSubmit={handleSubmit}
-          style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
-        >
-          {!isLogin && (
-            <input
-              type="text"
-              placeholder="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              style={{
-                padding: "10px",
-                borderRadius: "4px",
-                border: "1px solid #444",
-                background: "#2a2a2a",
-                color: "#fff",
-              }}
-            />
-          )}
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{
-              padding: "10px",
-              borderRadius: "4px",
-              border: "1px solid #444",
-              background: "#2a2a2a",
-              color: "#fff",
-            }}
+export function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              <PublicOnlyRoute>
+                <LoginPage />
+              </PublicOnlyRoute>
+            }
           />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{
-              padding: "10px",
-              borderRadius: "4px",
-              border: "1px solid #444",
-              background: "#2a2a2a",
-              color: "#fff",
-            }}
+          <Route
+            path="/register"
+            element={
+              <PublicOnlyRoute>
+                <RegisterPage />
+              </PublicOnlyRoute>
+            }
           />
-          <button
-            type="submit"
-            style={{
-              padding: "10px",
-              borderRadius: "4px",
-              border: "none",
-              background: "#646cff",
-              color: "#fff",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            {isLogin ? "Login" : "Register"}
-          </button>
-        </form>
 
-        <p
-          style={{
-            marginTop: "1rem",
-            textAlign: "center",
-            fontSize: "0.9rem",
-            cursor: "pointer",
-            color: "#8c9eff",
-          }}
-          onClick={() => setIsLogin(!isLogin)}
-        >
-          {isLogin
-            ? "Don't have an account? Register"
-            : "Already have an account? Login"}
-        </p>
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedWorkspace>
+                <DashboardPage />
+              </ProtectedWorkspace>
+            }
+          />
+          <Route
+            path="/tasks"
+            element={
+              <ProtectedWorkspace>
+                <TasksPage />
+              </ProtectedWorkspace>
+            }
+          />
+          <Route
+            path="/habits"
+            element={
+              <ProtectedWorkspace>
+                <HabitsPage />
+              </ProtectedWorkspace>
+            }
+          />
+          <Route
+            path="/focus"
+            element={
+              <ProtectedWorkspace>
+                <FocusPage />
+              </ProtectedWorkspace>
+            }
+          />
+          <Route
+            path="/notes"
+            element={
+              <ProtectedWorkspace>
+                <NotesPage />
+              </ProtectedWorkspace>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedWorkspace>
+                <SettingsPage />
+              </ProtectedWorkspace>
+            }
+          />
 
-        {message && (
-          <p
-            style={{
-              marginTop: "1rem",
-              textAlign: "center",
-              fontSize: "0.85rem",
-              color: message.includes("successful") ? "#4caf50" : "#f44336",
-            }}
-          >
-            {message}
-          </p>
-        )}
-      </div>
-    </div>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

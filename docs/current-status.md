@@ -1,55 +1,18 @@
 # Current Status
 
-This document separates capabilities visible in the repository from project
-goals and environment-specific claims.
+FocusFlow has been upgraded from an authentication prototype with in-memory mocks into a complete full-stack productivity workspace backed by Cloud SQL PostgreSQL.
 
-## Implemented in the repository
+## Implemented & Verified Capabilities
 
-- React, TypeScript, and Vite client with an authentication form.
-- Express and TypeScript API with JSON parsing and CORS middleware.
-- Registration and login endpoints with Zod validation, bcrypt password
-  hashing, and seven-day JWTs.
-- Bearer-token verification and protected profile/task routes.
-- Axios integration that stores the returned token and attaches it to
-  subsequent requests.
-- Prisma PostgreSQL schema for users, tasks, habits, categories, tags, and
-  notifications, plus an initial migration.
-- Client package scripts for development, linting, and production builds.
-
-The current client is primarily an authentication integration screen; it is
-not yet the complete notes, task dashboard, or focus-mode product described by
-the vision.
-
-## Planned or incomplete
-
-- AI integration for note analysis, topic connections, and task extraction.
-- Notes model and note-capture workflow.
-- Complete task-management, habit, category, tag, and notification APIs and UI.
-- Distraction-free focus mode and time tracking.
-- End-to-end test coverage and production deployment configuration.
-- Production CORS allowlist and a reviewed browser-token/session strategy.
-
-## Verification snapshot
-
-- Client production build: passed in the recent implementation check.
-- Client lint: passed in the recent implementation check.
-- Changed authentication server files: targeted TypeScript check passed.
-- Full server build: currently blocked by a task status type mismatch in
-  `server/src/services/task.service.ts`, where application values such as
-  `Todo` do not match the Prisma-style `TODO` enum expected by the repository.
-- Server test script: currently a placeholder; no automated server test suite
-  is configured.
-
-The project notes report that PostgreSQL is hosted on Supabase and that the
-schema has been pushed. This repository contains a PostgreSQL Prisma schema
-and an initial migration, but a successful live connection or current remote
-migration state has not been independently verified here.
-
-## Near-term priorities
-
-1. Align task status and priority representations across validation, service,
-   and persistence layers; make the full server build pass.
-2. Add focused API tests for registration, login, protected routes, and task
-   ownership.
-3. Build the notes and task product workflows before adding AI processing.
-4. Establish production deployment, CORS, secrets, and session policies.
+- **PostgreSQL Persistence (Drizzle ORM)**: 10 relational tables (`users`, `categories`, `tags`, `tasks`, `task_tags`, `habits`, `habit_completions`, `focus_sessions`, `notes`, `notifications`) provisioned and live on Cloud SQL.
+- **Authentication & Security**:
+  - Email/password registration and login with bcrypt (12 rounds), Zod validation, and 7-day JWTs.
+  - Google Sign-In via Firebase Auth (`signInWithPopup`) verified server-side with `firebase-admin` and synced to PostgreSQL.
+  - Session restoration on page refresh (`GET /api/users/me`), real server-side logout invalidation (`tokenVersion`), protected React Router routes, rate limiting, restricted CORS allowlist, and centralized sanitized error handling.
+- **Dashboard**: Real authenticated user summary with live KPI metrics, quick task capture, overdue/today/upcoming lists, daily habit check-ins, and 7-day focus stats.
+- **Tasks**: Full CRUD, completion toggle, categories, many-to-many tags, status/priority/due/category filters, search, sorting, and pagination.
+- **Habits**: Full CRUD, timezone-safe daily check-ins, 7-day completion matrix, and accurate current/best streak calculations.
+- **Focus Timer**: Pomodoro deep-work & break timer resilient to page refresh (timestamp-based state machine), task linking, distraction-free focus toggle, PostgreSQL session logging, and daily/7-day focus statistics.
+- **Notes**: Full CRUD, search, pinning, and deterministic non-AI action item extraction directly into PostgreSQL tasks.
+- **Settings**: Profile updates, light/dark mode preference persisted in PostgreSQL, timezone, default Pomodoro durations, and category/tag management.
+- **Automated Tests**: Unit tests for streak math, deterministic note task extraction, and Focus Timer state machine, plus live PostgreSQL API integration tests covering auth, protected routes, task CRUD, cross-user ownership isolation, habits, and focus sessions.

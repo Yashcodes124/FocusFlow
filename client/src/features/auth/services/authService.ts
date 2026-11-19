@@ -1,55 +1,79 @@
-import axios from "axios";
-
-type AuthCredentials = {
-  email: string;
-  password: string;
-};
-
-type RegisterUserData = AuthCredentials & {
-  name: string;
-};
-
-export type AuthResponse = {
-  success: true;
-  message: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  token: string;
-};
-
-const API_URL = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
-
-const api = axios.create({ baseURL: API_URL });
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.set("Authorization", `Bearer ${token}`);
-  }
-  return config;
-});
+import { signInWithPopup, signOut } from "firebase/auth";
+import {
+  apiClient,
+  clearAllAuthTokens,
+  setInMemoryToken,
+  setStoredJwtToken,
+} from "../../../lib/api";
+import { firebaseAuth, googleAuthProvider } from "../../../lib/firebase";
+import type {
+  AuthResponse,
+  LoginPayload,
+  RegisterPayload,
+  UpdateProfilePayload,
+  UserProfile,
+} from "../types";
 
 export const authService = {
-  async register(userData: RegisterUserData): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>("/users/register", userData);
-    localStorage.setItem("token", response.data.token);
+  async register(payload: RegisterPayload): Promise<AuthResponse> {
+    const response = await apiClient.post<AuthResponse>(
+      "/users/register",
+      payload,
+    );
+    setInMemoryToken(null);
+    setStoredJwtToken(response.data.token);
     return response.data;
   },
 
-  async login(credentials: AuthCredentials): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>("/users/login", credentials);
-    localStorage.setItem("token", response.data.token);
+  async login(payload: LoginPayload): Promise<AuthResponse> {
+    const response = await apiClient.post<AuthResponse>(
+      "/users/login",
+      payload,
+    );
+    setInMemoryToken(null);
+    setStoredJwtToken(response.data.token);
     return response.data;
   },
 
-  logout() {
-    localStorage.removeItem("token");
+  async loginWithGoogle(): Promise<UserProfile> {
+    if (!firebaseAuth || !googleAuthProvider) {
+      throw new Error("Google sign-in is not configured in this environment.");
+    }
+    const credential = await signInWithPopup(firebaseAuth, googleAuthProvider);
+    const idToken = await credential.user.getIdToken();
+    setStoredJwtToken(null);
+    setInMemoryToken(idToken);
+    return this.getMe();
   },
 
-  getCurrentToken() {
-    return localStorage.getItem("token");
+  async getMe(): Promise<UserProfile> {
+    const response = await apiClient.get<{ success: true; data: UserProfile }>(
+      "/users/me",
+    );
+    return response.data.data;
+  },
+
+  async updateProfile(payload: UpdateProfilePayload): Promise<UserProfile> {
+    const response = await apiClient.patch<{
+      success: true;
+      data: UserProfile;
+    }>("/users/me", payload);
+    return response.data.data;
+  },
+
+  async logout(): Promise<void> {
+    try {
+      await apiClient.post("/users/logout");
+    } catch {
+      // Ignore if session already expired
+    }
+    if (firebaseAuth) {
+      try {
+        await signOut(firebaseAuth);
+      } catch {
+        // Ignore if not signed in with Firebase
+      }
+    }
+    clearAllAuthTokens();
   },
 };

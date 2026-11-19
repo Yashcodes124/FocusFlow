@@ -1,38 +1,23 @@
-//shared/types/api.ts
-
-/**
- * Generic api response
- */
-export interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  statusCode: number;
-  date?: T;
+export interface ApiSuccessResponse<T> {
+  success: true;
+  data: T;
+  message?: string;
 }
-/**
- * Paginated response
- * returns list of items
- */
-export interface PaginatedResponse<T> extends ApiResponse<T[]> {
-  currentPage: number;
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
   totalPages: number;
-  totoalItems: number;
 }
 
-/**
- * List response
- */
-export interface ApiListResponse<T> extends ApiResponse<T[]> {
-  totalItems: number;
+export interface PaginatedApiResponse<T> extends ApiSuccessResponse<T[]> {
+  pagination: PaginationMeta;
 }
 
-/**
- * Standard API error
- * api don't return any data info
- */
-export interface ApiError {
-  success: boolean;
+export interface ApiErrorResponse {
+  success: false;
+  code?: string;
   message: string;
-  statusCode: number;
-  error?: Record<string, string[]>;
+  errors?: Record<string, string[]>;
 }
