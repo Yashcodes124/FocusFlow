@@ -1,6 +1,6 @@
 //declaration file
 
-import { Request } from "express";
+import type {} from "express";
 
 declare global {
   namespace Express {

@@ -5,7 +5,7 @@
 // Validate business rules
 // The service should not directly return HTTP responses.
 
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { findUserById } from "../repositories/user.repository.js";
 import {
   findUserByEmail,

@@ -1,8 +1,24 @@
-import { createTask as createTaskInRepository } from "../repositories/task.repository.js";
+import {
+  createTask as createTaskInRepository,
+  type TaskPriority,
+  type TaskStatus,
+} from "../repositories/task.repository.js";
 import {
   createTaskSchema,
   type CreateTaskInput,
 } from "../validators/task.validator.js";
+
+const STATUS_MAP: Record<CreateTaskInput["status"], TaskStatus> = {
+  Todo: "TODO",
+  "In Progress": "IN_PROGRESS",
+  Completed: "COMPLETED",
+};
+
+const PRIORITY_MAP: Record<CreateTaskInput["priority"], TaskPriority> = {
+  Low: "LOW",
+  Medium: "MEDIUM",
+  High: "HIGH",
+};
 
 export const createTaskService = async (
   data: CreateTaskInput,
@@ -13,8 +29,8 @@ export const createTaskService = async (
   const normalizedData = {
     userId,
     title: validatedData.title,
-    status: validatedData.status ?? "Todo",
-    priority: validatedData.priority ?? "Low",
+    status: STATUS_MAP[validatedData.status ?? "Todo"],
+    priority: PRIORITY_MAP[validatedData.priority ?? "Low"],
     isImportant: validatedData.isImportant ?? false,
     tagIds: validatedData.tagIds ?? [],
     ...(validatedData.description

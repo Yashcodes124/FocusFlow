@@ -1,8 +1,8 @@
-import { Router } from "express";
+import { Router, type Router as ExpressRouter } from "express";
 import { createTaskController } from "../controllers/task.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 router.post("/", authMiddleware, createTaskController);
 

@@ -1,7 +1,7 @@
 //define the end points(urls)
 //call router functions and shouldn't have db logic
 
-import { Router } from "express";
+import { Router, type Router as ExpressRouter } from "express";
 import {
   createUserController,
   getMeController,
@@ -10,7 +10,7 @@ import {
 } from "../controllers/user.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 router.post("/register", createUserController);
 router.post("/users", createUserController);
