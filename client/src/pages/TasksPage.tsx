@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { isCancel } from "axios";
 import {
   Check,
+  Loader2,
   Pencil,
   Plus,
   Search,
+  Sparkles,
   Star,
   Timer,
   Trash2,
+  X,
 } from "lucide-react";
 import { taskService } from "../features/tasks/services/taskService";
 import type {
@@ -21,10 +25,36 @@ import type {
 } from "../features/tasks/types";
 import { extractApiErrorMessage } from "../lib/api";
 import { formatShortDate, isTaskOverdue } from "../utils/dates";
+import {
+  getDescriptionSnippet,
+  matchesTaskSearch,
+  splitHighlightSegments,
+} from "../utils/taskSearch";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { TaskFormModal } from "../components/TaskFormModal";
+import { AiDecomposeModal } from "../components/AiDecomposeModal";
 import { EmptyState, ErrorBanner, LoadingRows } from "../components/ui/States";
+
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  const segments = splitHighlightSegments(text, query);
+  return (
+    <>
+      {segments.map((seg, idx) =>
+        seg.matched ? (
+          <mark
+            key={idx}
+            className="rounded-xs bg-blue-100 px-0.5 text-slate-900 dark:bg-blue-500/30 dark:text-slate-100"
+          >
+            {seg.text}
+          </mark>
+        ) : (
+          <span key={idx}>{seg.text}</span>
+        ),
+      )}
+    </>
+  );
+}
 
 const PRIORITY_STYLES: Record<TaskPriority, { label: string; className: string }> = {
   HIGH: { label: "High", className: "font-medium text-red-600 dark:text-red-400" },
@@ -51,8 +81,11 @@ export function TasksPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const activeRequestRef = useRef<AbortController | null>(null);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
@@ -68,50 +101,78 @@ export function TasksPage() {
       | "upcoming"
       | "no_date") || "all",
   );
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get("q") || "",
+  );
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState(
+    () => searchParams.get("q") || "",
+  );
+  const appliedSearchRef = useRef(searchParams.get("q")?.trim() || "");
   const [sortBy, setSortBy] =
     useState<NonNullable<TaskListFilters["sortBy"]>>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   // Modals
   const [formOpen, setFormOpen] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const loadTasks = useCallback(async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await taskService.list({
-        status: statusFilter,
-        priority: priorityFilter,
-        categoryId: categoryFilter || undefined,
-        dueFilter,
-        search: searchQuery,
-        sortBy,
-        sortOrder,
-        page,
-        limit: 25,
-      });
-      setTasks(res.data);
-      setTotal(res.pagination.total);
-      setTotalPages(res.pagination.totalPages);
-    } catch (err) {
-      setError(extractApiErrorMessage(err, "Failed to load tasks."));
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    statusFilter,
-    priorityFilter,
-    categoryFilter,
-    dueFilter,
-    searchQuery,
-    sortBy,
-    sortOrder,
-    page,
-  ]);
+  const loadTasks = useCallback(
+    async (queryOverride?: string) => {
+      activeRequestRef.current?.abort();
+      const controller = new AbortController();
+      activeRequestRef.current = controller;
+
+      const effectiveSearch =
+        queryOverride !== undefined ? queryOverride : searchQuery;
+
+      setError(null);
+      setIsRefreshing(true);
+      try {
+        const res = await taskService.list(
+          {
+            status: statusFilter,
+            priority: priorityFilter,
+            categoryId: categoryFilter || undefined,
+            dueFilter,
+            search: effectiveSearch,
+            sortBy,
+            sortOrder,
+            page,
+            limit: 25,
+          },
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        setTasks(res.data);
+        setTotal(res.pagination.total);
+        setTotalPages(res.pagination.totalPages);
+        appliedSearchRef.current = effectiveSearch.trim();
+        setAppliedSearchQuery(effectiveSearch.trim());
+      } catch (err) {
+        if (isCancel(err) || controller.signal.aborted) return;
+        setError(extractApiErrorMessage(err, "Failed to load tasks."));
+      } finally {
+        if (!controller.signal.aborted) {
+          setInitialLoading(false);
+          setIsRefreshing(false);
+        }
+      }
+    },
+    [
+      statusFilter,
+      priorityFilter,
+      categoryFilter,
+      dueFilter,
+      searchQuery,
+      sortBy,
+      sortOrder,
+      page,
+    ],
+  );
 
   useEffect(() => {
     let active = true;
@@ -130,11 +191,52 @@ export function TasksPage() {
   }, []);
 
   useEffect(() => {
+    const delayMs = searchQuery.trim() === appliedSearchRef.current ? 0 : 180;
     const timer = window.setTimeout(() => {
       loadTasks();
-    }, 150);
-    return () => window.clearTimeout(timer);
-  }, [loadTasks]);
+    }, delayMs);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [loadTasks, searchQuery]);
+
+  useEffect(() => {
+    return () => {
+      activeRequestRef.current?.abort();
+    };
+  }, []);
+
+  // Press "/" outside inputs to focus search quickly
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Instant client-side narrowing on every keystroke while server results reconcile
+  const visibleTasks = useMemo(() => {
+    if (!searchQuery.trim()) return tasks;
+    return tasks.filter((task) => matchesTaskSearch(task, searchQuery));
+  }, [tasks, searchQuery]);
+
+  const displayedTotal =
+    searchQuery.trim() !== appliedSearchQuery ? visibleTasks.length : total;
 
   const handleSaveTask = async (
     payload: CreateTaskPayload,
@@ -203,20 +305,32 @@ export function TasksPage() {
             Tasks
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            <span className="font-mono tabular-nums">{total}</span>{" "}
-            {total === 1 ? "task" : "tasks"} matching your current view
+            <span className="font-mono tabular-nums">{displayedTotal}</span>{" "}
+            {displayedTotal === 1 ? "task" : "tasks"} matching your current view
           </p>
         </div>
 
-        <Button
-          onClick={() => {
-            setEditingTask(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          New task
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => setAiModalOpen(true)}
+          >
+            <Sparkles
+              className="h-4 w-4 text-blue-600 dark:text-blue-400"
+              aria-hidden="true"
+            />
+            AI Break Down Goal
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingTask(null);
+              setFormOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            New task
+          </Button>
+        </div>
       </div>
 
       {/* Filter & Search Toolbar */}
@@ -259,26 +373,56 @@ export function TasksPage() {
             })}
           </div>
 
-          {/* Search input */}
-          <div className="relative w-full md:max-w-xs">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-              aria-hidden="true"
-            />
+          {/* Real-time search input (filters by title & description) */}
+          <div className="relative w-full md:max-w-sm">
+            {isRefreshing && !initialLoading ? (
+              <Loader2
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-blue-600 dark:text-blue-400"
+                aria-hidden="true"
+              />
+            ) : (
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              />
+            )}
             <label htmlFor="task-search" className="sr-only">
-              Search tasks
+              Search tasks by title or description
             </label>
             <input
+              ref={searchInputRef}
               id="task-search"
-              type="search"
+              type="text"
+              role="searchbox"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 setPage(1);
               }}
-              placeholder="Search tasks…"
-              className="min-h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:bg-slate-900"
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && searchQuery) {
+                  e.preventDefault();
+                  setSearchQuery("");
+                  setPage(1);
+                }
+              }}
+              placeholder="Search title or description…"
+              className="min-h-[38px] w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-9 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:bg-slate-900"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setPage(1);
+                  searchInputRef.current?.focus();
+                }}
+                aria-label="Clear search"
+                className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -370,17 +514,54 @@ export function TasksPage() {
         </div>
       </div>
 
-      {error && <ErrorBanner message={error} onRetry={loadTasks} />}
+      {error && <ErrorBanner message={error} onRetry={() => loadTasks()} />}
+
+      {bulkNotice && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200"
+        >
+          <span>{bulkNotice}</span>
+          <div className="flex items-center gap-3">
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  resetFilters();
+                  setBulkNotice(null);
+                }}
+                className="text-xs font-semibold underline underline-offset-2 hover:opacity-80"
+              >
+                Show all tasks
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setBulkNotice(null)}
+              aria-label="Dismiss notification"
+              className="text-emerald-700 hover:opacity-80 dark:text-emerald-300"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Task List */}
-      {loading ? (
+      {initialLoading ? (
         <LoadingRows count={5} />
-      ) : tasks.length === 0 ? (
+      ) : visibleTasks.length === 0 ? (
         <EmptyState
-          title={hasActiveFilters ? "No tasks match these filters" : "No tasks yet"}
+          title={
+            searchQuery.trim()
+              ? `No tasks match "${searchQuery.trim()}"`
+              : hasActiveFilters
+                ? "No tasks match these filters"
+                : "No tasks yet"
+          }
           description={
             hasActiveFilters
-              ? "Try broadening your search or clearing active filters."
+              ? "Try a different keyword across title or description, or clear active filters."
               : "Add your first task with a clear outcome and due date to build momentum."
           }
           action={
@@ -389,25 +570,45 @@ export function TasksPage() {
                 Clear filters
               </Button>
             ) : (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setEditingTask(null);
-                  setFormOpen(true);
-                }}
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Create your first task
-              </Button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAiModalOpen(true)}
+                >
+                  <Sparkles
+                    className="h-4 w-4 text-blue-600 dark:text-blue-400"
+                    aria-hidden="true"
+                  />
+                  AI Break Down Goal
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setEditingTask(null);
+                    setFormOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Create your first task
+                </Button>
+              </div>
             )
           }
         />
       ) : (
-        <div className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
-          {tasks.map((task) => {
+        <div
+          aria-busy={isRefreshing}
+          className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900"
+        >
+          {visibleTasks.map((task) => {
             const completed = task.status === "COMPLETED";
             const overdue = isTaskOverdue(task.dueDate, task.status);
             const pStyle = PRIORITY_STYLES[task.priority];
+            const descriptionSnippet = getDescriptionSnippet(
+              task.description,
+              searchQuery,
+            );
 
             return (
               <div
@@ -446,7 +647,7 @@ export function TasksPage() {
                             : "text-slate-900 dark:text-slate-100"
                         }`}
                       >
-                        {task.title}
+                        <HighlightedText text={task.title} query={searchQuery} />
                       </button>
                       {task.isImportant && (
                         <Star
@@ -455,6 +656,15 @@ export function TasksPage() {
                         />
                       )}
                     </div>
+
+                    {descriptionSnippet && (
+                      <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                        <HighlightedText
+                          text={descriptionSnippet}
+                          query={searchQuery}
+                        />
+                      </p>
+                    )}
 
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
                       <span className={pStyle.className}>{pStyle.label}</span>
@@ -485,6 +695,14 @@ export function TasksPage() {
                           >
                             {overdue ? "Overdue · " : "Due "}
                             {formatShortDate(task.dueDate)}
+                          </span>
+                        </>
+                      )}
+                      {task.estimatedMinutes && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="font-mono tabular-nums">
+                            {task.estimatedMinutes}m
                           </span>
                         </>
                       )}
@@ -576,6 +794,21 @@ export function TasksPage() {
         categories={categories}
         tags={tags}
         onSave={handleSaveTask}
+      />
+
+      {/* AI Task Decomposer Modal */}
+      <AiDecomposeModal
+        open={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        categories={categories}
+        onCreated={async (createdTasks) => {
+          setBulkNotice(
+            `Added ${createdTasks.length} ${
+              createdTasks.length === 1 ? "subtask" : "subtasks"
+            } from your AI breakdown.`,
+          );
+          await loadTasks();
+        }}
       />
 
       {/* Task Detail Modal */}

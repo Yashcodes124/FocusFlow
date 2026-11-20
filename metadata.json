@@ -1,0 +1,8 @@
+{
+  "name": "FocusFlow",
+  "description": "Full-stack productivity workspace connecting daily tasks, habits, focus sessions, notes, and context-aware AI task decomposition.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

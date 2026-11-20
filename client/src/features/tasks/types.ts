@@ -64,3 +64,31 @@ export interface CreateTaskPayload {
 }
 
 export type UpdateTaskPayload = Partial<CreateTaskPayload>;
+
+export type AiSubtaskPriority = "low" | "medium" | "high";
+
+export interface AiDecomposeSubtask {
+  title: string;
+  description: string;
+  estimatedPomodoros: number;
+  priority: AiSubtaskPriority;
+  suggestedCategoryId: string | null;
+  suggestedDueDate: string;
+}
+
+export interface AiDecomposeRequest {
+  goal: string;
+  targetDate?: string | null;
+  autoCreate?: boolean;
+}
+
+export interface AiDecomposeResponse {
+  strategySummary: string;
+  subtasks: AiDecomposeSubtask[];
+  workspaceContext: {
+    pendingTaskCount: number;
+    categoriesCount: number;
+    tagsCount: number;
+  };
+  createdTasks?: Task[];
+}

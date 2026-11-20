@@ -4,7 +4,6 @@ import {
   desc,
   eq,
   gte,
-  ilike,
   inArray,
   isNull,
   lt,
@@ -76,7 +75,12 @@ export interface ListTasksRepoParams {
   endOfToday: Date;
 }
 
-async function hydrateTasks(rows: TaskRow[]): Promise<HydratedTask[]> {
+type DbExecutor = Pick<typeof db, "select">;
+
+async function hydrateTasks(
+  rows: TaskRow[],
+  executor: DbExecutor = db,
+): Promise<HydratedTask[]> {
   if (rows.length === 0) return [];
 
   const taskIds = rows.map((r) => r.id);
@@ -86,7 +90,7 @@ async function hydrateTasks(rows: TaskRow[]): Promise<HydratedTask[]> {
 
   const [categoryRows, tagJoinRows] = await Promise.all([
     categoryIds.length > 0
-      ? db
+      ? executor
           .select({
             id: categories.id,
             name: categories.name,
@@ -95,7 +99,7 @@ async function hydrateTasks(rows: TaskRow[]): Promise<HydratedTask[]> {
           .from(categories)
           .where(inArray(categories.id, categoryIds))
       : Promise.resolve([]),
-    db
+    executor
       .select({
         taskId: taskTags.taskId,
         id: tags.id,
@@ -145,6 +149,47 @@ export const createTask = async (
   return hydrated[0]!;
 };
 
+export const createTasksBulkInTransaction = async (
+  items: CreateTaskRepoData[],
+): Promise<HydratedTask[]> => {
+  if (items.length === 0) return [];
+
+  return db.transaction(async (tx) => {
+    const insertedRows: TaskRow[] = [];
+    const tagLinks: Array<{ taskId: string; tagId: string }> = [];
+
+    for (const item of items) {
+      const { tagIds, ...taskValues } = item;
+      const inserted = await tx.insert(tasks).values(taskValues).returning();
+      const created = inserted[0]!;
+      insertedRows.push(created);
+
+      if (tagIds.length > 0) {
+        const uniqueTagIds = Array.from(new Set(tagIds));
+        for (const tagId of uniqueTagIds) {
+          tagLinks.push({ taskId: created.id, tagId });
+        }
+      }
+    }
+
+    if (tagLinks.length > 0) {
+      await tx.insert(taskTags).values(tagLinks).onConflictDoNothing();
+    }
+
+    return hydrateTasks(insertedRows, tx);
+  });
+};
+
+export const countPendingTasksByUser = async (
+  userId: string,
+): Promise<number> => {
+  const result = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(tasks)
+    .where(and(eq(tasks.userId, userId), ne(tasks.status, "COMPLETED")));
+  return result[0]?.count ?? 0;
+};
+
 export const findTaskByIdAndUser = async (
   id: string,
   userId: string,
@@ -175,10 +220,22 @@ export const listTasksByUser = async (
     conditions.push(eq(tasks.categoryId, params.categoryId));
   }
   if (params.search && params.search.trim().length > 0) {
-    const pattern = `%${params.search.trim()}%`;
-    conditions.push(
-      or(ilike(tasks.title, pattern), ilike(tasks.description, pattern))!,
-    );
+    const tokens = params.search
+      .trim()
+      .split(/\s+/)
+      .filter((token) => token.length > 0)
+      .slice(0, 8);
+
+    for (const token of tokens) {
+      const escaped = token.replace(/[\\%_]/g, "\\$&");
+      const pattern = `%${escaped}%`;
+      conditions.push(
+        or(
+          sql`${tasks.title} ILIKE ${pattern} ESCAPE '\\'`,
+          sql`${tasks.description} ILIKE ${pattern} ESCAPE '\\'`,
+        )!,
+      );
+    }
   }
 
   if (params.dueFilter === "today") {

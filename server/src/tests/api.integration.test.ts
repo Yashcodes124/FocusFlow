@@ -172,7 +172,7 @@ test("Full FocusFlow API integration: auth, tasks, isolation, habits, focus sess
   assert.equal(taskA.tags.length, 1);
   assert.equal(taskA.tags[0]?.id, tagId);
 
-  // Search & Filter Tasks
+  // Search & Filter Tasks (title, description, multi-word, case-insensitive, wildcard-safe)
   const listRes = await apiRequest("/api/tasks?priority=HIGH&search=Phase", {
     token: tokenA,
   });
@@ -180,6 +180,24 @@ test("Full FocusFlow API integration: auth, tasks, isolation, habits, focus sess
   const listedTasks = listRes.body.data as Array<{ id: string }>;
   assert.equal(listedTasks.length, 1);
   assert.equal(listedTasks[0]?.id, taskA.id);
+
+  const descSearchRes = await apiRequest("/api/tasks?search=DRIZZLE", {
+    token: tokenA,
+  });
+  assert.equal(descSearchRes.status, 200);
+  assert.equal((descSearchRes.body.data as Array<{ id: string }>).length, 1);
+
+  const multiWordRes = await apiRequest("/api/tasks?search=Phase%20ownership", {
+    token: tokenA,
+  });
+  assert.equal(multiWordRes.status, 200);
+  assert.equal((multiWordRes.body.data as Array<{ id: string }>).length, 1);
+
+  const wildcardRes = await apiRequest("/api/tasks?search=%25", {
+    token: tokenA,
+  });
+  assert.equal(wildcardRes.status, 200);
+  assert.equal((wildcardRes.body.data as Array<{ id: string }>).length, 0);
 
   // Cross-user isolation: User B cannot read, update, or delete User A's task
   const crossGet = await apiRequest(`/api/tasks/${taskA.id}`, { token: tokenB });

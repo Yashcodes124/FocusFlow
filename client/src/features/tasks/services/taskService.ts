@@ -1,5 +1,7 @@
 import { apiClient } from "../../../lib/api";
 import type {
+  AiDecomposeRequest,
+  AiDecomposeResponse,
   Category,
   CreateTaskPayload,
   Tag,
@@ -19,7 +21,10 @@ export interface PaginatedTasksResult {
 }
 
 export const taskService = {
-  async list(filters: TaskListFilters = {}): Promise<PaginatedTasksResult> {
+  async list(
+    filters: TaskListFilters = {},
+    signal?: AbortSignal,
+  ): Promise<PaginatedTasksResult> {
     const params: Record<string, string | number> = {};
     if (filters.status) params.status = filters.status;
     if (filters.priority) params.priority = filters.priority;
@@ -38,7 +43,7 @@ export const taskService = {
       success: true;
       data: Task[];
       pagination: PaginatedTasksResult["pagination"];
-    }>("/tasks", { params });
+    }>("/tasks", { params, signal });
     return { data: res.data.data, pagination: res.data.pagination };
   },
 
@@ -47,6 +52,24 @@ export const taskService = {
       "/tasks",
       payload,
     );
+    return res.data.data;
+  },
+
+  async createBulk(tasks: CreateTaskPayload[]): Promise<Task[]> {
+    const res = await apiClient.post<{ success: true; data: Task[] }>(
+      "/tasks/bulk",
+      { tasks },
+    );
+    return res.data.data;
+  },
+
+  async decomposeGoal(
+    payload: AiDecomposeRequest,
+  ): Promise<AiDecomposeResponse> {
+    const res = await apiClient.post<{
+      success: true;
+      data: AiDecomposeResponse;
+    }>("/ai/decompose-task", payload, { timeout: 45000 });
     return res.data.data;
   },
 

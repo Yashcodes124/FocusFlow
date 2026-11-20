@@ -12,10 +12,11 @@
     "build": "npm run build --workspace=client && npm run build --workspace=server",
     "start": "npm run start --workspace=server",
     "lint": "npm run lint --workspace=client",
-    "test": "npx --yes tsx --test server/src/tests/logic.test.ts server/src/tests/api.integration.test.ts client/src/utils/focusTimer.test.ts",
+    "test": "npx --yes tsx --test server/src/tests/logic.test.ts server/src/tests/api.integration.test.ts server/src/tests/aiDecompose.test.ts server/src/tests/aiDecompose.integration.test.ts client/src/utils/focusTimer.test.ts client/src/utils/taskSearch.test.ts",
     "db:push": "npx drizzle-kit push --config=src/db/drizzle.config.ts"
   },
   "dependencies": {
+    "@google/genai": "^3.6.1",
     "@hookform/resolvers": "^7.0.7",
     "@types/pg": "^8.23.1",
     "dotenv": "^18.0.10",

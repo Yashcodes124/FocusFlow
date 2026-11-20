@@ -1,6 +1,7 @@
 import { Errors } from "../lib/errors.js";
 import {
   createTask,
+  createTasksBulkInTransaction,
   deleteTaskByIdAndUser,
   findTaskByIdAndUser,
   listTasksByUser,
@@ -12,6 +13,7 @@ import {
 import {
   findCategoryByIdAndUser,
   findTagsByIdsAndUser,
+  listCategoriesByUser,
 } from "../repositories/taxonomy.repository.js";
 import type {
   CreateTaskInput,
@@ -35,6 +37,9 @@ const PRIORITY_MAP: Record<string, TaskPriority> = {
   Low: "LOW",
   Medium: "MEDIUM",
   High: "HIGH",
+  low: "LOW",
+  medium: "MEDIUM",
+  high: "HIGH",
 };
 
 function normalizeDateInput(
@@ -105,6 +110,62 @@ export const createTaskService = async (
     isImportant: data.isImportant ?? false,
     tagIds: data.tagIds ?? [],
   });
+};
+
+export const createTasksBulkService = async (
+  items: CreateTaskInput[],
+  userId: string,
+): Promise<HydratedTask[]> => {
+  const uniqueCategoryIds = Array.from(
+    new Set(
+      items
+        .map((item) => item.categoryId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  if (uniqueCategoryIds.length > 0) {
+    const ownedCategories = await listCategoriesByUser(userId);
+    const ownedCategoryIdSet = new Set(ownedCategories.map((c) => c.id));
+    const missingCategory = uniqueCategoryIds.find(
+      (id) => !ownedCategoryIdSet.has(id),
+    );
+    if (missingCategory) {
+      throw Errors.badRequest("One or more selected categories were not found");
+    }
+  }
+
+  const uniqueTagIds = Array.from(
+    new Set(items.flatMap((item) => item.tagIds ?? [])),
+  );
+  if (uniqueTagIds.length > 0) {
+    const ownedTags = await findTagsByIdsAndUser(uniqueTagIds, userId);
+    if (ownedTags.length !== uniqueTagIds.length) {
+      throw Errors.badRequest("One or more selected tags were not found");
+    }
+  }
+
+  const repoPayloads = items.map((data) => {
+    const normalizedStatus = STATUS_MAP[data.status ?? "TODO"] ?? "TODO";
+    const normalizedPriority =
+      PRIORITY_MAP[data.priority ?? "MEDIUM"] ?? "MEDIUM";
+
+    return {
+      userId,
+      title: data.title,
+      description: data.description ?? null,
+      status: normalizedStatus,
+      priority: normalizedPriority,
+      categoryId: data.categoryId ?? null,
+      dueDate: normalizeDateInput(data.dueDate) ?? null,
+      reminderTime: normalizeDateInput(data.reminderTime) ?? null,
+      completedAt: normalizedStatus === "COMPLETED" ? new Date() : null,
+      estimatedMinutes: data.estimatedMinutes ?? null,
+      isImportant: data.isImportant ?? false,
+      tagIds: data.tagIds ?? [],
+    };
+  });
+
+  return createTasksBulkInTransaction(repoPayloads);
 };
 
 export const listTasksService = async (

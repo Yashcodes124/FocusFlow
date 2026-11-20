@@ -25,3 +25,16 @@ export const apiRateLimiter = rateLimit({
     message: "Too many requests. Please slow down.",
   },
 });
+
+export const aiRateLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  limit: isTestEnv ? 500 : 15,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    code: "AI_RATE_LIMITED",
+    message:
+      "Too many AI task breakdown requests. Please wait a minute and try again.",
+  },
+});

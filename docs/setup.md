@@ -116,20 +116,28 @@ Leave all blank to run with email/password authentication only. Alternatively, p
 | `VITE_FIREBASE_AUTH_DOMAIN` | Client | Firebase Auth domain (defaults to `<projectId>.firebaseapp.com`) | Firebase Console → Web App Config |
 | `VITE_FIREBASE_PROJECT_ID` | Client | Firebase Project ID (enables "Continue with Google" UI button) | Firebase Console → Web App Config |
 
+### Optional AI Task Decomposer (Gemini API) Variable
+
+Required only for `POST /api/ai/decompose-task`. Kept strictly server-side in `server/src/lib/gemini.ts` and never exposed to the client bundle.
+
+| Variable | Side | Purpose | Where to Get |
+| --- | --- | --- | --- |
+| `GEMINI_API_KEY` | Server | Authenticates server-side `@google/genai` calls for AI task decomposition and Pomodoro effort estimation | Google AI Studio API Keys (or **Settings → Secrets** when running in AI Studio) |
+
 ## Available Scripts
 
 ### Root (`package.json`)
 
 | Script | Command | What It Does |
 | --- | --- | --- |
-| `npm run dev` | `npm run build --workspace=client && npm run dev --workspace=server` | Builds the Vite SPA and starts the Express server in watch mode (`tsx watch`) |
-| `npm run build` | `npm run build --workspace=client && npm run build --workspace=server` | Type-checks and builds both `client/dist` and `server/dist` |
+| `npm run dev` | `npm run build --workspace=client && npm run dev --workspace=server` | Builds the Vite SPA and starts the Express server (`tsx src/server.ts`) |
+| `npm run build` | `npm run build --workspace=client && npm run build --workspace=server` | Type-checks and builds both `client/dist` and `server/dist` (cleaning stale server build files first) |
 | `npm start` | `npm run start --workspace=server` | Runs the compiled production server (`node dist/server/src/server.js`) |
 | `npm run lint` | `npm run lint --workspace=client` | Runs ESLint across the React client (`client/`) |
-| `npm test` | `npx --yes tsx --test server/src/tests/logic.test.ts server/src/tests/api.integration.test.ts client/src/utils/focusTimer.test.ts` | Executes all unit tests and live PostgreSQL API integration tests |
+| `npm test` | `npx --yes tsx --test server/src/tests/logic.test.ts server/src/tests/api.integration.test.ts server/src/tests/aiDecompose.test.ts server/src/tests/aiDecompose.integration.test.ts client/src/utils/focusTimer.test.ts client/src/utils/taskSearch.test.ts` | Executes all unit tests and live PostgreSQL API integration tests |
 | `npm run db:push` | `npx drizzle-kit push --config=src/db/drizzle.config.ts` | Pushes `src/db/schema.ts` directly to PostgreSQL |
 
 ### Workspace-Specific Scripts
 
 - **Client (`client/package.json`)**: `dev` (`vite`), `build` (`tsc -b && vite build`), `lint` (`eslint .`), `preview` (`vite preview`).
-- **Server (`server/package.json`)**: `dev` (`tsx watch src/server.ts`), `build` (`tsc`), `start` (`node dist/server/src/server.js`), `test` (`tsx --test src/tests/*.test.ts`).
+- **Server (`server/package.json`)**: `dev` (`tsx src/server.ts`), `dev:watch` (`tsx watch src/server.ts`), `build` (cleans `dist` then runs `tsc`), `start` (`node dist/server/src/server.js`), `test` (`tsx --test src/tests/*.test.ts`).

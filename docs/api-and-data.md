@@ -158,6 +158,7 @@ erDiagram
 - Protected routes require `Authorization: Bearer <token>` (either a FocusFlow 7-day JWT or, when Firebase is configured, a Firebase ID token).
 - General `/api` rate limit (`server/src/middlewares/rateLimit.middleware.ts`): **300 requests / 1 minute** (`2000` when `NODE_ENV=test`).
 - Auth rate limit on `POST /api/users/register` and `POST /api/users/login`: **30 requests / 15 minutes** (`500` when `NODE_ENV=test`).
+- AI rate limit on `POST /api/ai/decompose-task`: **15 requests / 1 minute** (`500` when `NODE_ENV=test`).
 
 ### Standard Response Envelopes
 
@@ -186,7 +187,7 @@ erDiagram
 }
 ```
 
-Common error codes: `VALIDATION_ERROR` (`400`), `INVALID_ID` (`400`), `INVALID_REFERENCE` (`400`), `UNAUTHORIZED` (`401`), `SESSION_EXPIRED` (`401`), `FORBIDDEN` (`403`), `NOT_FOUND` (`404`), `CONFLICT` (`409`), `RATE_LIMITED` (`429`), `INTERNAL_ERROR` (`500`).
+Common error codes: `VALIDATION_ERROR` (`400`), `INVALID_ID` (`400`), `INVALID_REFERENCE` (`400`), `UNAUTHORIZED` (`401`), `SESSION_EXPIRED` (`401`), `FORBIDDEN` (`403`), `NOT_FOUND` (`404`), `CONFLICT` (`409`), `RATE_LIMITED` / `AI_RATE_LIMITED` (`429`), `INTERNAL_ERROR` (`500`), `AI_INVALID_RESPONSE` / `AI_UPSTREAM_ERROR` (`502`), `AI_SERVICE_UNAVAILABLE` (`503`).
 
 ---
 
@@ -231,6 +232,7 @@ Defined in `server/src/routes/task.routes.ts` and validated by `server/src/valid
 | --- | --- | --- | --- | --- |
 | `GET` | `/api/tasks` | Bearer | Query: `status?` (`TODO`\|`IN_PROGRESS`\|`COMPLETED`), `priority?` (`LOW`\|`MEDIUM`\|`HIGH`), `categoryId?`, `tagId?`, `dueFilter?` (`all`\|`today`\|`overdue`\|`upcoming`\|`no_date`), `search?`, `sortBy?` (`createdAt`\|`dueDate`\|`priority`\|`updatedAt`\|`title`), `sortOrder?` (`asc`\|`desc`), `page?` (default `1`), `limit?` (1–100, default `50`), `timezone?` | `200` `{ success, data: Task[], pagination: { page, limit, total, totalPages } }` |
 | `POST` | `/api/tasks` | Bearer | Body: `{ title, description?, status?, priority?, categoryId?, dueDate?, reminderTime?, estimatedMinutes? (1–1440), isImportant?, tagIds?: uuid[] }` | `201` `{ success, message, data: Task }` |
+| `POST` | `/api/tasks/bulk` | Bearer | Body: `{ tasks: CreateTaskInput[] }` (1–20 tasks inserted atomically in one PostgreSQL transaction) | `201` `{ success, message, data: Task[] }` |
 | `GET` | `/api/tasks/:id` | Bearer | — | `200` `{ success, data: Task }` |
 | `PATCH` | `/api/tasks/:id` | Bearer | Body: partial fields from `POST /api/tasks` | `200` `{ success, message, data: Task }` |
 | `PATCH` | `/api/tasks/:id/toggle` | Bearer | — | `200` `{ success, message, data: Task }` (toggles `COMPLETED` ↔ `TODO` and updates `completedAt`) |
@@ -289,3 +291,11 @@ Defined in `server/src/routes/note.routes.ts` and validated by `server/src/valid
 | `PATCH` | `/api/notes/:id` | Bearer | Body: partial fields from `POST /api/notes` | `200` `{ success, message, data: Note }` |
 | `DELETE` | `/api/notes/:id` | Bearer | — | `200` `{ success, message }` |
 | `POST` | `/api/notes/:id/extract-tasks` | Bearer | Body: `{ selectedTitles?: string[], categoryId? }` | `201` `{ success, message, data: { extractedCount, tasks } }` |
+
+### AI Task Decomposer (`/api/ai`)
+
+Defined in `server/src/routes/ai.routes.ts`, validated by `server/src/validators/ai.validator.ts`, and backed by `@google/genai` (`server/src/lib/gemini.ts`, `server/src/services/ai.service.ts`).
+
+| Method | Path | Auth | Request Body | Response |
+| --- | --- | --- | --- | --- |
+| `POST` | `/api/ai/decompose-task` | Bearer (AI rate limit) | `{ goal (5–300 chars), targetDate? ("YYYY-MM-DD" \| ISO datetime), autoCreate? (boolean, default false) }` | `200` (preview) or `201` (`autoCreate: true`) `{ success, data: { strategySummary, subtasks: [{ title, description, estimatedPomodoros (1–4), priority ("low"\|"medium"\|"high"), suggestedCategoryId (uuid\|null), suggestedDueDate ("YYYY-MM-DD") }], workspaceContext: { pendingTaskCount, categoriesCount, tagsCount }, createdTasks? } }` |

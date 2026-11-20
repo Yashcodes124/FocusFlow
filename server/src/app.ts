@@ -17,6 +17,7 @@ import { categoryRoutes, tagRoutes } from "./routes/taxonomy.routes.js";
 import focusRoutes from "./routes/focus.routes.js";
 import noteRoutes from "./routes/note.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 
 validateEnvironment();
 
@@ -83,6 +84,7 @@ app.use("/api/tags", tagRoutes);
 app.use("/api/focus", focusRoutes);
 app.use("/api/notes", noteRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/ai", aiRoutes);
 
 // 404 for unknown API paths
 app.use("/api", notFoundMiddleware);

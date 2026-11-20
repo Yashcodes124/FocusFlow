@@ -8,7 +8,8 @@ FocusFlow is a full-stack productivity workspace that connects daily task execut
 
 - **Authentication & Session Security**: Email/password registration and login (`bcryptjs` + 7-day JWT with server-side `tokenVersion` revocation on logout), session restoration via `GET /api/users/me`, protected routes, rate limiting, and optional Google Sign-In via Firebase Auth.
 - **Dashboard Overview**: Live metrics for open tasks, completed today, daily habits, and today/7-day focus minutes, paired with quick task capture and prioritized Today, Overdue, and Upcoming views.
-- **Tasks, Categories & Tags**: Full CRUD, completion toggle, priority and status filters, due-date filters (`today`, `overdue`, `upcoming`, `no_date`), search, sorting, pagination, custom categories, and many-to-many tags.
+- **Tasks, Categories & Tags**: Full CRUD, atomic bulk creation, completion toggle, priority and status filters, due-date filters (`today`, `overdue`, `upcoming`, `no_date`), real-time highlighted search across title and description, sorting, pagination, custom categories, and many-to-many tags.
+- **Context-Aware AI Task Decomposer & Effort Estimator**: Break broad goals into 3–6 prioritized, Pomodoro-sized subtasks (`1–4` Pomodoros each) informed by your existing categories, tags, and pending workload, with inline editing and atomic batch creation (`POST /api/ai/decompose-task` + `POST /api/tasks/bulk`).
 - **Habit Tracking & Streaks**: Daily/weekly/monthly habits with timezone-aware check-ins, 7-day history tracking, and calculated current/best streaks.
 - **Resilient Focus Timer**: Pomodoro focus and break modes linked to tasks, backed by wall-clock timestamps in `localStorage` so active timers survive page refreshes, with persisted session logging to PostgreSQL.
 - **Notes & Task Extraction**: Searchable, pinnable notes with deterministic extraction of `- [ ]` checkboxes and `TODO:` / `ACTION:` lines directly into Tasks.
@@ -22,7 +23,7 @@ npm install
 
 # 2. Configure environment variables
 cp .env.example .env
-# Edit .env with JWT_SECRET and DATABASE_URL (local Postgres or Supabase)
+# Edit .env with JWT_SECRET, DATABASE_URL (local Postgres or Supabase), and optional GEMINI_API_KEY
 
 # 3. Push the Drizzle PostgreSQL schema
 npm run db:push

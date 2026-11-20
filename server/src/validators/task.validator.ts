@@ -27,6 +27,9 @@ const priorityInputSchema = z.enum([
   "Low",
   "Medium",
   "High",
+  "low",
+  "medium",
+  "high",
 ]);
 
 export const createTaskSchema = z.object({
@@ -89,6 +92,14 @@ export const listTasksQuerySchema = z.object({
   timezone: z.string().trim().max(64).optional(),
 });
 
+export const bulkCreateTasksSchema = z.object({
+  tasks: z
+    .array(createTaskSchema)
+    .min(1, "At least one task is required")
+    .max(20, "You can create up to 20 tasks in a single batch"),
+});
+
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
+export type BulkCreateTasksInput = z.infer<typeof bulkCreateTasksSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;

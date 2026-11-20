@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { Errors } from "../lib/errors.js";
 import {
   createTaskService,
+  createTasksBulkService,
   deleteTaskService,
   getTaskByIdService,
   listTasksService,
@@ -9,6 +10,7 @@ import {
   updateTaskService,
 } from "../services/task.service.js";
 import {
+  bulkCreateTasksSchema,
   createTaskSchema,
   listTasksQuerySchema,
   updateTaskSchema,
@@ -52,6 +54,28 @@ export const createTaskController = async (
       success: true,
       message: "Task created successfully",
       data: task,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const createTasksBulkController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized();
+
+    const payload = bulkCreateTasksSchema.parse(req.body);
+    const created = await createTasksBulkService(payload.tasks, userId);
+
+    return res.status(201).json({
+      success: true,
+      message: `${created.length} ${created.length === 1 ? "task" : "tasks"} created successfully`,
+      data: created,
     });
   } catch (error) {
     return next(error);
