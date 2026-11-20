@@ -1,17 +1,52 @@
-import type { Request, Response } from "express";
-import { ZodError } from "zod";
-import { createTaskService } from "../services/task.service.js";
+import type { NextFunction, Request, Response } from "express";
+import { Errors } from "../lib/errors.js";
+import {
+  createTaskService,
+  deleteTaskService,
+  getTaskByIdService,
+  listTasksService,
+  toggleTaskCompleteService,
+  updateTaskService,
+} from "../services/task.service.js";
+import {
+  createTaskSchema,
+  listTasksQuerySchema,
+  updateTaskSchema,
+} from "../validators/task.validator.js";
 
-export const createTaskController = async (req: Request, res: Response) => {
+export const listTasksController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const userId = req.user?.userId;
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-    const task = await createTaskService(req.body, userId);
+    if (!userId) throw Errors.unauthorized();
+
+    const query = listTasksQuerySchema.parse(req.query);
+    const result = await listTasksService(userId, query);
+
+    return res.status(200).json({
+      success: true,
+      data: result.items,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const createTaskController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized();
+
+    const payload = createTaskSchema.parse(req.body);
+    const task = await createTaskService(payload, userId);
 
     return res.status(201).json({
       success: true,
@@ -19,18 +54,87 @@ export const createTaskController = async (req: Request, res: Response) => {
       data: task,
     });
   } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: error.flatten().fieldErrors,
-      });
-    }
+    return next(error);
+  }
+};
 
-    const statusCode = (error as any).statusCode || 500;
-    return res.status(statusCode).json({
-      success: false,
-      message: (error as Error).message || "Internal server error",
+export const getTaskByIdController = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized();
+
+    const task = await getTaskByIdService(req.params.id, userId);
+    return res.status(200).json({
+      success: true,
+      data: task,
     });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const updateTaskController = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized();
+
+    const payload = updateTaskSchema.parse(req.body);
+    const task = await updateTaskService(req.params.id, userId, payload);
+
+    return res.status(200).json({
+      success: true,
+      message: "Task updated successfully",
+      data: task,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const toggleTaskCompleteController = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized();
+
+    const task = await toggleTaskCompleteService(req.params.id, userId);
+    return res.status(200).json({
+      success: true,
+      message:
+        task.status === "COMPLETED" ? "Task completed" : "Task reopened",
+      data: task,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const deleteTaskController = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized();
+
+    await deleteTaskService(req.params.id, userId);
+    return res.status(200).json({
+      success: true,
+      message: "Task deleted successfully",
+    });
+  } catch (error) {
+    return next(error);
   }
 };

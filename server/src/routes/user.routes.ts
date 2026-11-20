@@ -1,21 +1,22 @@
-//define the end points(urls)
-//call router functions and shouldn't have db logic
-
 import { Router, type Router as ExpressRouter } from "express";
 import {
   createUserController,
   getMeController,
   getUserByIdController,
   loginUserController,
+  logoutUserController,
+  updateMeController,
 } from "../controllers/user.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { authRateLimiter } from "../middlewares/rateLimit.middleware.js";
 
 const router: ExpressRouter = Router();
 
-router.post("/register", createUserController);
-router.post("/users", createUserController);
-router.post("/login", loginUserController);
+router.post("/register", authRateLimiter, createUserController);
+router.post("/login", authRateLimiter, loginUserController);
+router.post("/logout", authMiddleware, logoutUserController);
 router.get("/me", authMiddleware, getMeController);
+router.patch("/me", authMiddleware, updateMeController);
 router.get("/:id", authMiddleware, getUserByIdController);
 
 export default router;

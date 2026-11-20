@@ -1,4 +1,4 @@
-//declaration file
+// Declaration augmentation for Express Request
 
 import type {} from "express";
 
@@ -7,6 +7,8 @@ declare global {
     interface Request {
       user?: {
         userId: string;
+        email: string;
+        authProvider: "jwt" | "firebase";
       };
     }
   }

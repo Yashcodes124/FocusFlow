@@ -1,69 +1,55 @@
 # Database
 
-Focus Flow uses PostgreSQL with Prisma 7 and the `@prisma/adapter-pg` adapter.
-The Prisma schema is maintained at `server/prisma/schema.prisma`; migrations
-are stored in `server/prisma/migrations/`.
+FocusFlow persists all application data in **PostgreSQL** (Cloud SQL) using **Drizzle ORM** and `pg.Pool`.
 
-## Connection and environment
+- Schema definition: `src/db/schema.ts`
+- Runtime pool & Drizzle client: `src/db/index.ts`
+- Migration configuration: `src/db/drizzle.config.ts`
 
-The server reads `DATABASE_URL` from its environment. Project notes identify
-Supabase as the intended hosted PostgreSQL provider, while the application
-itself only requires a valid PostgreSQL connection string. Do not commit
-credentials or real connection strings.
+## Connection Configuration
 
-Create `server/.env` locally with values supplied by your database provider:
+FocusFlow supports two PostgreSQL connection modes automatically (`src/db/index.ts` and `src/db/drizzle.config.ts`):
 
-```dotenv
-DATABASE_URL="<postgresql-connection-string>"
-JWT_SECRET="<long-random-secret>"
+1. **Cloud SQL discrete credentials** (used automatically when `SQL_HOST`, `SQL_DB_NAME`, and `SQL_USER` are set):
+   - Runtime: `SQL_HOST`, `SQL_DB_NAME`, `SQL_USER`, `SQL_PASSWORD` (optional `SQL_PORT`)
+   - Migrations: `SQL_ADMIN_USER`, `SQL_ADMIN_PASSWORD`
+2. **Standard PostgreSQL or Supabase connection URL** (used automatically for local PostgreSQL, Supabase, Neon, or Render):
+   - `DATABASE_URL`: Standard PostgreSQL connection URI (for Supabase, use the Transaction Pooler URI; SSL is enabled automatically for remote hosts and disabled for `localhost`/`127.0.0.1`).
+   - `DIRECT_URL` (optional): Direct non-pooled URI used by `npm run db:push` (recommended for Supabase schema pushes).
+
+The runtime pool (`pg.Pool`) is initialized lazily and cached globally to avoid connection exhaustion during server restarts.
+
+To push the schema to your database locally:
+
+```bash
+npm run db:push
 ```
 
-Environment files are ignored by Git. Keep production values in the deployment
-platform's secret manager.
+## Relational Schema (`src/db/schema.ts`)
 
-## Data model
-
-| Model | Role | Relationships |
+| Table | Purpose | Key Relationships & Constraints |
 | --- | --- | --- |
-| `User` | Account identity, password hash, and basic preferences | Owns tasks, habits, categories, tags, and notifications |
-| `Task` | Actionable work, status, priority, due dates, and focus metadata | Belongs to a user; optionally belongs to a category; can have tags and notifications |
-| `Habit` | Repeating activity, target, and streak fields | Belongs to a user; can have notifications |
-| `Category` | User-owned task grouping | Belongs to a user; can contain tasks |
-| `Tag` | User-owned task label | Belongs to a user; has a many-to-many relationship with tasks |
-| `Notification` | User notification with optional task or habit association | Belongs to a user; may reference a task or habit |
+| `users` | Account identity, bcrypt hash (nullable for OAuth-only users), `firebase_uid`, `token_version`, preferences (`theme`, `timezone`, Pomodoro defaults) | Unique `email` and `firebase_uid`; cascades delete to all owned records |
+| `categories` | User-owned task groupings with color token | Belongs to `users`; unique `(user_id, name)` |
+| `tags` | User-owned task labels with color token | Belongs to `users`; unique `(user_id, name)` |
+| `tasks` | Actionable work (`status`, `priority`, `due_date`, `estimated_minutes`, `completed_at`) | Belongs to `users`; optional `category_id` (`ON DELETE SET NULL`); composite index `(user_id, status, due_date)` |
+| `task_tags` | Explicit many-to-many join table between `tasks` and `tags` | Composite primary key `(task_id, tag_id)`; cascades delete from either side |
+| `habits` | Repeating routines (`frequency`, `target_per_period`, `current_streak`, `best_streak`, `archived`) | Belongs to `users`; cascades delete to `habit_completions` |
+| `habit_completions` | Timezone-normalized daily check-in logs (`completed_date` as `YYYY-MM-DD`) | Belongs to `habits` and `users`; unique `(habit_id, completed_date)` |
+| `focus_sessions` | Persisted Pomodoro / deep-work and break sessions (`type`, `status`, `planned_minutes`, `actual_minutes`, timestamps) | Belongs to `users`; optional `task_id` (`ON DELETE SET NULL`) |
+| `notes` | Structured workspace notes (`title`, `content`, `pinned`) | Belongs to `users`; indexed by `(user_id, pinned, updated_at)` |
+| `notifications` | User reminders with optional links to a task or habit | Belongs to `users`; optional `task_id`/`habit_id` (`ON DELETE SET NULL`) |
 
-The schema defines enums for task status, task priority, habit frequency, and
-notification type. User email is unique. Deleting a user cascades to
-user-owned records; optional task/category and notification links use
-`SET NULL` where configured.
+## PostgreSQL Enums
 
-## Prisma commands
+- `task_status`: `TODO`, `IN_PROGRESS`, `DONE`
+- `task_priority`: `LOW`, `MEDIUM`, `HIGH`
+- `habit_frequency`: `DAILY`, `WEEKLY`
+- `focus_session_type`: `FOCUS`, `SHORT_BREAK`, `LONG_BREAK`
+- `focus_session_status`: `IN_PROGRESS`, `COMPLETED`, `INTERRUPTED`
+- `theme_preference`: `LIGHT`, `DARK`
+- `notification_type`: `TASK_DUE`, `HABIT_REMINDER`, `FOCUS_COMPLETE`, `SYSTEM`
 
-Run these commands from the repository root:
+## Legacy Note
 
-```powershell
-npm --prefix server run generate
-npm --prefix server run migrate
-```
-
-`generate` builds the Prisma client according to the schema generator
-configuration. `migrate` runs Prisma's development migration workflow and may
-apply schema changes to the database configured by `DATABASE_URL`. Confirm the
-target database and back up important data before running migrations against a
-shared or production environment.
-
-## Optional local PostgreSQL
-
-The database may also be run locally. If PostgreSQL is installed as a Windows
-service, check its actual service name and state before starting it. Configure
-`DATABASE_URL` for the local instance (including the correct port), then run
-the Prisma commands above from the repository root. Do not assume a specific
-service name or port; these depend on the local installation.
-
-## Migration and hosting notes
-
-The repository contains an initial PostgreSQL migration for the current
-models. Project notes report that the schema has also been pushed to the
-intended Supabase database; the local schema and migration files do not
-independently verify the current remote database state. Verify connectivity
-and migration status with the intended environment before deployment.
+Earlier commits included a `server/prisma/` folder that was disconnected from a live database and used an in-memory mock repository. All active repositories now query Cloud SQL PostgreSQL directly via `src/db/index.ts` and `src/db/schema.ts`.

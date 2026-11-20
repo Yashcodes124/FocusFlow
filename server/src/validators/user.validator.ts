@@ -1,31 +1,50 @@
-//it contains only schemas : but no express, no prisma, no bcrypt
-
-//just VALIDATION Rules
-
 import { z } from "zod";
 
-//schema for User Registration
 export const registerUserSchema = z.object({
   name: z
     .string({ error: "Name is required" })
-    .min(3, "Name must be atleast 3 chracters long"),
-
-  email: z.string({ error: "Email is required" }).email("Invalid email format"),
-
+    .trim()
+    .min(2, "Name must be at least 2 characters long")
+    .max(80, "Name must be 80 characters or fewer"),
+  email: z
+    .string({ error: "Email is required" })
+    .trim()
+    .toLowerCase()
+    .email("Invalid email format"),
   password: z
     .string({ error: "Password is required" })
-    .min(6, "Password must be at least 6 characters long"),
+    .min(8, "Password must be at least 8 characters long")
+    .max(128, "Password is too long"),
+  timezone: z.string().trim().min(1).max(64).optional(),
 });
-
-//typeSafety: Infer TypeScript type directly from the schema for use in controllers/services
-export type CreateUserInput = z.infer<typeof registerUserSchema>;
 
 export const loginUserSchema = z.object({
   email: z
-    .string({ error: "Please enter a valid email" })
+    .string({ error: "Email is required" })
+    .trim()
+    .toLowerCase()
     .email("Invalid email format"),
-
   password: z
-    .string({ error: "invalid password" })
-    .min(6, "Password must be at least 6 characters long"),
+    .string({ error: "Password is required" })
+    .min(1, "Password is required")
+    .max(128, "Password is too long"),
 });
+
+export const updateProfileSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Name must be at least 2 characters long")
+    .max(80, "Name must be 80 characters or fewer")
+    .optional(),
+  theme: z.enum(["light", "dark"]).optional(),
+  language: z.enum(["en", "es", "fr", "de"]).optional(),
+  timezone: z.string().trim().min(1).max(64).optional(),
+  focusDurationMinutes: z.number().int().min(5).max(120).optional(),
+  shortBreakMinutes: z.number().int().min(1).max(30).optional(),
+  longBreakMinutes: z.number().int().min(5).max(60).optional(),
+});
+
+export type RegisterUserInput = z.infer<typeof registerUserSchema>;
+export type LoginUserInput = z.infer<typeof loginUserSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

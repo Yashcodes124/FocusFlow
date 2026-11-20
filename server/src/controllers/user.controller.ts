@@ -1,154 +1,137 @@
-//reponsibilities-> recieve request and response , call service , return response
-//don't know DB
-
-import type { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
+import { Errors } from "../lib/errors.js";
 import {
-  createUserService,
   getUserById,
-  loginUser,
+  loginUserService,
+  logoutUserService,
+  registerUserService,
+  updateUserProfileService,
 } from "../services/user.service.js";
 import {
   loginUserSchema,
   registerUserSchema,
+  updateProfileSchema,
 } from "../validators/user.validator.js";
-import { generateToken } from "../utils/jwt.js";
-import { ZodError } from "zod";
 
-type UserParams = {
-  id: string;
-};
-
-/**
- * Controller to handle GET /users/:id requests
- */
-
-export const getUserByIdController = async (
-  req: Request<UserParams>,
+export const createUserController = async (
+  req: Request,
   res: Response,
+  next: NextFunction,
 ) => {
-  if (req.user?.userId !== req.params.id) {
-    return res.status(403).json({
-      success: false,
-      message: "Forbidden",
-    });
-  }
-
-  //1.extract the id from the route params(/users/:id)
-  const { id } = req.params;
-
-  //2.call service layer
-  const user = await getUserById(id);
-
-  //3.Return success response
-  return res.status(200).json({
-    success: true,
-    data: user,
-  });
-};
-
-export const createUserController = async (req: Request, res: Response) => {
   try {
-    //1.Validate incoming HTTP request body against the Zod schema
-    const validatedData = registerUserSchema.parse(req.body);
+    const validated = registerUserSchema.parse(req.body);
+    const { user, token } = await registerUserService(validated);
 
-    //2.pass the validated data to the bussiness logic
-    const user = await createUserService(validatedData);
-    const token = generateToken(user.id);
-
-    //3. return success response(201 created)
     return res.status(201).json({
       success: true,
-      message: "User Created Successfully",
+      message: "Account created successfully",
+      data: { user, token },
       user,
       token,
     });
-  } catch (error: unknown) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: error.flatten().fieldErrors,
-      });
-    }
-
-    const statusCode =
-      error instanceof Error &&
-      "statusCode" in error &&
-      typeof error.statusCode === "number"
-        ? error.statusCode
-        : 500;
-    return res.status(statusCode).json({
-      success: false,
-      message:
-        statusCode === 409 ? "User already exists" : "Internal server error",
-    });
+  } catch (error) {
+    return next(error);
   }
 };
 
-export const loginUserController = async (req: Request, res: Response) => {
+export const loginUserController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const credentials = loginUserSchema.parse(req.body);
-    const result = await loginUser(credentials);
+    const { user, token } = await loginUserService(credentials);
 
     return res.status(200).json({
       success: true,
       message: "Login successful",
-      ...result,
+      data: { user, token },
+      user,
+      token,
     });
-  } catch (error: unknown) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: error.flatten().fieldErrors,
-      });
-    }
-
-    if (
-      error instanceof Error &&
-      error.message === "Invalid email or password"
-    ) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+  } catch (error) {
+    return next(error);
   }
 };
 
-export const getMeController = async (req: Request, res: Response) => {
+export const logoutUserController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    //get the userId
     const userId = req.user?.userId;
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-    //fetch the user information
-    const user = await getUserById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
+    if (!userId) throw Errors.unauthorized();
+    await logoutUserService(userId);
 
-    //send the user Profile excluding the passward
+    return res.status(200).json({
+      success: true,
+      message: "Signed out successfully",
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getMeController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized();
+
+    const user = await getUserById(userId);
     return res.status(200).json({
       success: true,
       data: user,
     });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
+    return next(error);
+  }
+};
+
+export const updateMeController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw Errors.unauthorized();
+
+    const payload = updateProfileSchema.parse(req.body);
+    const user = await updateUserProfileService(userId, payload);
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated",
+      data: user,
     });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getUserByIdController = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!req.user?.userId) throw Errors.unauthorized();
+    if (req.user.userId !== req.params.id) {
+      throw Errors.forbidden();
+    }
+
+    const user = await getUserById(req.params.id);
+    return res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    return next(error);
   }
 };
