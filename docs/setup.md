@@ -47,7 +47,7 @@ This guide covers installing dependencies, configuring PostgreSQL (local or Supa
      npm start
      ```
 
-   - **Development mode** (builds `client/dist` once, then runs Express with `tsx watch` on port `3000`):
+   - **Development mode** (builds `client/dist` once, then runs Express with `tsx src/server.ts` on port `3000`):
 
      ```bash
      npm run dev
@@ -134,7 +134,7 @@ Required only for `POST /api/ai/decompose-task`. Kept strictly server-side in `s
 | `npm run build` | `npm run build --workspace=client && npm run build --workspace=server` | Type-checks and builds both `client/dist` and `server/dist` (cleaning stale server build files first) |
 | `npm start` | `npm run start --workspace=server` | Runs the compiled production server (`node dist/server/src/server.js`) |
 | `npm run lint` | `npm run lint --workspace=client` | Runs ESLint across the React client (`client/`) |
-| `npm test` | `npx --yes tsx --test server/src/tests/logic.test.ts server/src/tests/api.integration.test.ts server/src/tests/aiDecompose.test.ts server/src/tests/aiDecompose.integration.test.ts client/src/utils/focusTimer.test.ts client/src/utils/taskSearch.test.ts` | Executes all unit tests and live PostgreSQL API integration tests |
+| `npm test` | `npx --yes tsx --test server/src/tests/logic.test.ts server/src/tests/api.integration.test.ts server/src/tests/aiDecompose.test.ts server/src/tests/aiDecompose.integration.test.ts server/src/tests/attachments.test.ts client/src/utils/focusTimer.test.ts client/src/utils/taskSearch.test.ts client/src/utils/shortcuts.test.ts` | Executes all unit tests and live PostgreSQL API integration tests |
 | `npm run db:push` | `npx drizzle-kit push --config=src/db/drizzle.config.ts` | Pushes `src/db/schema.ts` directly to PostgreSQL |
 
 ### Workspace-Specific Scripts

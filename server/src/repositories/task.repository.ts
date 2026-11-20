@@ -17,6 +17,7 @@ import { db } from "../../../src/db/index.js";
 import {
   categories,
   tags,
+  taskAttachments,
   tasks,
   taskTags,
 } from "../../../src/db/schema.js";
@@ -25,9 +26,24 @@ export type TaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 export type TaskRow = typeof tasks.$inferSelect;
 
+export interface TaskAttachmentMeta {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: Date;
+}
+
+export interface TaskAttachmentRecord extends TaskAttachmentMeta {
+  taskId: string;
+  userId: string;
+  dataBase64: string;
+}
+
 export interface HydratedTask extends TaskRow {
   category: { id: string; name: string; color: string } | null;
   tags: Array<{ id: string; name: string; color: string }>;
+  attachments: TaskAttachmentMeta[];
 }
 
 export interface CreateTaskRepoData {
@@ -88,7 +104,7 @@ async function hydrateTasks(
     new Set(rows.map((r) => r.categoryId).filter((v): v is string => Boolean(v))),
   );
 
-  const [categoryRows, tagJoinRows] = await Promise.all([
+  const [categoryRows, tagJoinRows, attachmentRows] = await Promise.all([
     categoryIds.length > 0
       ? executor
           .select({
@@ -109,6 +125,18 @@ async function hydrateTasks(
       .from(taskTags)
       .innerJoin(tags, eq(taskTags.tagId, tags.id))
       .where(inArray(taskTags.taskId, taskIds)),
+    executor
+      .select({
+        taskId: taskAttachments.taskId,
+        id: taskAttachments.id,
+        fileName: taskAttachments.fileName,
+        mimeType: taskAttachments.mimeType,
+        sizeBytes: taskAttachments.sizeBytes,
+        createdAt: taskAttachments.createdAt,
+      })
+      .from(taskAttachments)
+      .where(inArray(taskAttachments.taskId, taskIds))
+      .orderBy(asc(taskAttachments.createdAt)),
   ]);
 
   const categoryMap = new Map(categoryRows.map((c) => [c.id, c]));
@@ -116,6 +144,7 @@ async function hydrateTasks(
     string,
     Array<{ id: string; name: string; color: string }>
   >();
+  const attachmentsByTask = new Map<string, TaskAttachmentMeta[]>();
 
   for (const row of tagJoinRows) {
     const list = tagsByTask.get(row.taskId) ?? [];
@@ -123,10 +152,23 @@ async function hydrateTasks(
     tagsByTask.set(row.taskId, list);
   }
 
+  for (const row of attachmentRows) {
+    const list = attachmentsByTask.get(row.taskId) ?? [];
+    list.push({
+      id: row.id,
+      fileName: row.fileName,
+      mimeType: row.mimeType,
+      sizeBytes: row.sizeBytes,
+      createdAt: row.createdAt,
+    });
+    attachmentsByTask.set(row.taskId, list);
+  }
+
   return rows.map((row) => ({
     ...row,
     category: row.categoryId ? (categoryMap.get(row.categoryId) ?? null) : null,
     tags: tagsByTask.get(row.id) ?? [],
+    attachments: attachmentsByTask.get(row.id) ?? [],
   }));
 }
 
@@ -357,5 +399,76 @@ export const deleteTaskByIdAndUser = async (
     .delete(tasks)
     .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
     .returning({ id: tasks.id });
+  return rows.length > 0;
+};
+
+export const countAttachmentsByTask = async (
+  taskId: string,
+  userId: string,
+): Promise<number> => {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(taskAttachments)
+    .where(
+      and(eq(taskAttachments.taskId, taskId), eq(taskAttachments.userId, userId)),
+    );
+  return rows[0]?.count ?? 0;
+};
+
+export const createTaskAttachment = async (data: {
+  taskId: string;
+  userId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataBase64: string;
+}): Promise<TaskAttachmentMeta> => {
+  const inserted = await db
+    .insert(taskAttachments)
+    .values(data)
+    .returning({
+      id: taskAttachments.id,
+      fileName: taskAttachments.fileName,
+      mimeType: taskAttachments.mimeType,
+      sizeBytes: taskAttachments.sizeBytes,
+      createdAt: taskAttachments.createdAt,
+    });
+  return inserted[0]!;
+};
+
+export const findTaskAttachmentByIdAndUser = async (
+  taskId: string,
+  attachmentId: string,
+  userId: string,
+): Promise<TaskAttachmentRecord | null> => {
+  const rows = await db
+    .select()
+    .from(taskAttachments)
+    .where(
+      and(
+        eq(taskAttachments.id, attachmentId),
+        eq(taskAttachments.taskId, taskId),
+        eq(taskAttachments.userId, userId),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+};
+
+export const deleteTaskAttachmentByIdAndUser = async (
+  taskId: string,
+  attachmentId: string,
+  userId: string,
+): Promise<boolean> => {
+  const rows = await db
+    .delete(taskAttachments)
+    .where(
+      and(
+        eq(taskAttachments.id, attachmentId),
+        eq(taskAttachments.taskId, taskId),
+        eq(taskAttachments.userId, userId),
+      ),
+    )
+    .returning({ id: taskAttachments.id });
   return rows.length > 0;
 };

@@ -1,8 +1,11 @@
 import { Router, type Router as ExpressRouter } from "express";
 import {
+  addTaskAttachmentController,
   createTaskController,
   createTasksBulkController,
+  deleteTaskAttachmentController,
   deleteTaskController,
+  downloadTaskAttachmentController,
   getTaskByIdController,
   listTasksController,
   toggleTaskCompleteController,
@@ -21,5 +24,11 @@ router.get("/:id", getTaskByIdController);
 router.patch("/:id", updateTaskController);
 router.patch("/:id/toggle", toggleTaskCompleteController);
 router.delete("/:id", deleteTaskController);
+router.post("/:id/attachments", addTaskAttachmentController);
+router.get(
+  "/:id/attachments/:attachmentId/download",
+  downloadTaskAttachmentController,
+);
+router.delete("/:id/attachments/:attachmentId", deleteTaskAttachmentController);
 
 export default router;

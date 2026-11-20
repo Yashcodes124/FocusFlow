@@ -19,6 +19,14 @@ export interface Tag {
   updatedAt?: string;
 }
 
+export interface TaskAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
 export interface Task {
   id: string;
   userId: string;
@@ -29,6 +37,7 @@ export interface Task {
   categoryId: string | null;
   category: { id: string; name: string; color: string } | null;
   tags: Array<{ id: string; name: string; color: string }>;
+  attachments?: TaskAttachment[];
   dueDate: string | null;
   reminderTime: string | null;
   completedAt: string | null;

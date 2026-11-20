@@ -11,6 +11,7 @@ erDiagram
   users ||--o{ categories : owns
   users ||--o{ tags : owns
   users ||--o{ tasks : owns
+  users ||--o{ task_attachments : uploads
   users ||--o{ habits : owns
   users ||--o{ habit_completions : logs
   users ||--o{ focus_sessions : records
@@ -20,6 +21,7 @@ erDiagram
   categories ||--o{ tasks : "categorizes (SET NULL)"
   categories ||--o{ notes : "categorizes (SET NULL)"
   tasks ||--o{ task_tags : has
+  tasks ||--o{ task_attachments : stores
   tags ||--o{ task_tags : labels
   tasks ||--o{ focus_sessions : "linked to (SET NULL)"
   tasks ||--o{ notifications : "triggers (SET NULL)"
@@ -74,6 +76,17 @@ erDiagram
   task_tags {
     uuid task_id PK,FK
     uuid tag_id PK,FK
+  }
+
+  task_attachments {
+    uuid id PK
+    uuid task_id FK
+    uuid user_id FK
+    text file_name
+    text mime_type
+    int size_bytes
+    text data_base64
+    timestamptz created_at
   }
 
   habits {
@@ -143,10 +156,11 @@ erDiagram
 
 ### Constraints & Indexes
 
-- Deleting a row in `users` cascades to all owned tables (`onDelete: "cascade"`).
+- Deleting a row in `users` cascades to all owned tables (`onDelete: "cascade"`). Deleting a `task` cascades to `task_tags` and `task_attachments`.
 - Deleting a `category`, `task`, or `habit` sets optional foreign keys (`category_id`, `task_id`, `habit_id`) to `NULL` on dependent records (`onDelete: "set null"`).
 - Unique indexes enforce uniqueness on `users(email)`, `users(firebase_uid)`, `categories(user_id, name)`, `tags(user_id, name)`, and `habit_completions(habit_id, completed_date)`.
 - `task_tags` uses a composite primary key `(task_id, tag_id)`.
+- `task_attachments` enforces application-level caps of **max 2 files per task**, **max 512 KB (`524,288` bytes) per file**, and a strict safe MIME allowlist (`image/png`, `image/jpeg`, `image/webp`, `image/gif`, `application/pdf`, `text/plain`, `text/markdown`, `text/csv`, `application/json`). Task listing queries hydrate attachment metadata only and omit `data_base64`.
 - Note: The `notifications` table is provisioned in `src/db/schema.ts` for future reminders; no `/api/notifications` route is mounted yet.
 
 ---
@@ -237,6 +251,9 @@ Defined in `server/src/routes/task.routes.ts` and validated by `server/src/valid
 | `PATCH` | `/api/tasks/:id` | Bearer | Body: partial fields from `POST /api/tasks` | `200` `{ success, message, data: Task }` |
 | `PATCH` | `/api/tasks/:id/toggle` | Bearer | — | `200` `{ success, message, data: Task }` (toggles `COMPLETED` ↔ `TODO` and updates `completedAt`) |
 | `DELETE` | `/api/tasks/:id` | Bearer | — | `200` `{ success, message }` |
+| `POST` | `/api/tasks/:id/attachments` | Bearer | Body: `{ fileName (max 140), mimeType, dataBase64 }` (max 2 files/task, max 512 KB decoded, safe MIME allowlist; validated by `server/src/validators/attachment.validator.ts`) | `201` `{ success, message, data: TaskAttachmentMeta }` |
+| `GET` | `/api/tasks/:id/attachments/:attachmentId/download` | Bearer | — | `200` Binary file stream with `Content-Type`, `Content-Disposition: attachment`, and `X-Content-Type-Options: nosniff` |
+| `DELETE` | `/api/tasks/:id/attachments/:attachmentId` | Bearer | — | `200` `{ success, message }` |
 
 ### Habits (`/api/habits`)
 

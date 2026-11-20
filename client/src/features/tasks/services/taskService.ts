@@ -6,6 +6,7 @@ import type {
   CreateTaskPayload,
   Tag,
   Task,
+  TaskAttachment,
   TaskListFilters,
   UpdateTaskPayload,
 } from "../types";
@@ -90,6 +91,29 @@ export const taskService = {
 
   async remove(id: string): Promise<void> {
     await apiClient.delete(`/tasks/${id}`);
+  },
+
+  async uploadAttachment(
+    taskId: string,
+    payload: { fileName: string; mimeType: string; dataBase64: string },
+  ): Promise<TaskAttachment> {
+    const res = await apiClient.post<{ success: true; data: TaskAttachment }>(
+      `/tasks/${taskId}/attachments`,
+      payload,
+    );
+    return res.data.data;
+  },
+
+  async downloadAttachment(taskId: string, attachmentId: string): Promise<Blob> {
+    const res = await apiClient.get<Blob>(
+      `/tasks/${taskId}/attachments/${attachmentId}/download`,
+      { responseType: "blob" },
+    );
+    return res.data;
+  },
+
+  async deleteAttachment(taskId: string, attachmentId: string): Promise<void> {
+    await apiClient.delete(`/tasks/${taskId}/attachments/${attachmentId}`);
   },
 
   async listCategories(): Promise<Category[]> {

@@ -163,6 +163,30 @@ export const taskTags = pgTable(
   ],
 );
 
+export const taskAttachments = pgTable(
+  "task_attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    dataBase64: text("data_base64").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("task_attachments_task_id_idx").on(table.taskId),
+    index("task_attachments_user_id_idx").on(table.userId),
+  ],
+);
+
 export const habits = pgTable(
   "habits",
   {
@@ -307,6 +331,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   categories: many(categories),
   tags: many(tags),
   tasks: many(tasks),
+  taskAttachments: many(taskAttachments),
   habits: many(habits),
   habitCompletions: many(habitCompletions),
   focusSessions: many(focusSessions),
@@ -332,6 +357,7 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
     references: [categories.id],
   }),
   taskTags: many(taskTags),
+  attachments: many(taskAttachments),
   focusSessions: many(focusSessions),
   notifications: many(notifications),
 }));
@@ -340,6 +366,20 @@ export const taskTagsRelations = relations(taskTags, ({ one }) => ({
   task: one(tasks, { fields: [taskTags.taskId], references: [tasks.id] }),
   tag: one(tags, { fields: [taskTags.tagId], references: [tags.id] }),
 }));
+
+export const taskAttachmentsRelations = relations(
+  taskAttachments,
+  ({ one }) => ({
+    task: one(tasks, {
+      fields: [taskAttachments.taskId],
+      references: [tasks.id],
+    }),
+    user: one(users, {
+      fields: [taskAttachments.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const habitsRelations = relations(habits, ({ one, many }) => ({
   user: one(users, { fields: [habits.userId], references: [users.id] }),

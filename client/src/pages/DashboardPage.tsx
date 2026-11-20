@@ -25,6 +25,7 @@ import {
 } from "../utils/dates";
 import { Button } from "../components/ui/Button";
 import { EmptyState, ErrorBanner, LoadingRows } from "../components/ui/States";
+import { TASKS_CHANGED_EVENT } from "../utils/shortcuts";
 
 const PRIORITY_TEXT: Record<TaskPriority, { label: string; className: string }> =
   {
@@ -84,6 +85,16 @@ export function DashboardPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const onTasksChanged = () => {
+      void loadDashboard();
+    };
+    window.addEventListener(TASKS_CHANGED_EVENT, onTasksChanged);
+    return () => {
+      window.removeEventListener(TASKS_CHANGED_EVENT, onTasksChanged);
+    };
+  }, [loadDashboard]);
 
   const handleQuickCapture = async (e: React.FormEvent) => {
     e.preventDefault();

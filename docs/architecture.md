@@ -10,7 +10,7 @@ FocusFlow is a full-stack TypeScript productivity workspace organized as an npm 
 | Backend API | Node.js (ESM), Express 5, TypeScript, Zod 4, `bcryptjs`, `jsonwebtoken`, `express-rate-limit`, `cors` | `server/src/app.ts`, `server/src/server.ts` |
 | Optional OAuth | Firebase Auth client SDK (`firebase/auth`) + `firebase-admin` server ID token verification (dynamically enabled only when configured) | `client/src/lib/firebase.ts`, `server/src/lib/firebase-admin.ts` |
 | Database | PostgreSQL via `pg.Pool` and Drizzle ORM (`drizzle-orm/node-postgres`, `drizzle-kit`) | `src/db/schema.ts`, `src/db/index.ts`, `src/db/drizzle.config.ts` |
-| Testing | Node built-in test runner (`node:test`) executed with `tsx` | `server/src/tests/*.test.ts`, `client/src/utils/focusTimer.test.ts` |
+| Testing | Node built-in test runner (`node:test`) executed with `tsx` | `server/src/tests/*.test.ts`, `client/src/utils/*.test.ts` |
 
 ## System Architecture Diagram
 
@@ -45,7 +45,7 @@ flowchart LR
 │       ├── App.tsx             # Route table & ProtectedWorkspace wrapper
 │       ├── context/            # AuthContext (session restore, theme sync, logout)
 │       ├── lib/                # Axios client + interceptors, optional Firebase init
-│       ├── components/         # AppLayout shell, ProtectedRoute, TaskFormModal, UI primitives
+│       ├── components/         # AppLayout shell, ProtectedRoute, TaskFormModal, ShortcutsHelpModal, UI primitives
 │       ├── features/           # Domain types, Zod form schemas, and API service clients
 │       │   ├── auth/
 │       │   ├── dashboard/
@@ -54,7 +54,7 @@ flowchart LR
 │       │   ├── notes/
 │       │   └── tasks/
 │       ├── pages/              # Route views (Auth, Dashboard, Tasks, Habits, Focus, Notes, Settings)
-│       └── utils/              # Date formatting & timestamp-based Focus Timer state machine
+│       └── utils/              # Date formatting, Focus Timer state machine, task search, shortcuts, attachments
 ├── server/                     # Express 5 + TypeScript API workspace
 │   ├── tsconfig.json           # Compiles server/src and ../src/db into server/dist
 │   └── src/
@@ -71,7 +71,7 @@ flowchart LR
 │       └── tests/              # Pure logic unit tests & live PostgreSQL integration tests
 ├── src/
 │   └── db/                     # Shared Drizzle PostgreSQL layer
-│       ├── schema.ts           # 10 PostgreSQL tables, enums, indexes, and Drizzle relations
+│       ├── schema.ts           # 11 PostgreSQL tables, enums, indexes, and Drizzle relations
 │       ├── index.ts            # Lazy global pg.Pool (Cloud SQL discrete vars or DATABASE_URL)
 │       └── drizzle.config.ts   # Drizzle Kit schema push/migration config
 ├── shared/
@@ -132,3 +132,7 @@ sequenceDiagram
 ### 4. Pure, Unit-Tested Domain Engines
 - **Habit streak calculation** (`server/src/utils/streak.ts`): Computes `currentStreak` and `bestStreak` from deduplicated `YYYY-MM-DD` completion keys in the user's IANA timezone, preserving an active streak through yesterday if today has not yet been checked in.
 - **Deterministic note action extraction** (`server/src/utils/noteExtractor.ts`): Parses unchecked Markdown checkboxes (`- [ ]`), `TODO:` / `ACTION:` prefixes, and bullet action lines into deduplicated task drafts without calling external LLM APIs.
+
+### 5. Global Keyboard Shortcuts & Lightweight Task Attachments
+- **Global shortcuts (`client/src/utils/shortcuts.ts`, `client/src/components/layout/AppLayout.tsx`, `client/src/components/ShortcutsHelpModal.tsx`)**: A pure matcher (`matchGlobalShortcut`) evaluates modifier and chord shortcuts across all authenticated pages while automatically ignoring typing inside inputs, textareas, selects, and `contenteditable` fields (except `Ctrl/Cmd+K`, `Ctrl+N`, `Ctrl+Shift+A`, and `Ctrl+Shift+D`). Creating a task from the global shortcut modal dispatches `focusflow:tasks-changed` so `/dashboard` and `/tasks` refresh seamlessly.
+- **Quick PostgreSQL-backed attachments (`src/db/schema.ts`, `server/src/validators/attachment.validator.ts`, `client/src/utils/attachments.ts`)**: Tasks support up to **2 lightweight files** (**max 512 KB** each) stored as base64 in `task_attachments`—requiring no external S3/GCS bucket. Task list endpoints return only metadata (`id`, `fileName`, `mimeType`, `sizeBytes`, `createdAt`) and omit `dataBase64`; binary payloads are served only through the authenticated `GET /api/tasks/:id/attachments/:attachmentId/download` route with `Content-Disposition: attachment` and a strict MIME allowlist.

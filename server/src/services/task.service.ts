@@ -1,12 +1,17 @@
 import { Errors } from "../lib/errors.js";
 import {
+  countAttachmentsByTask,
   createTask,
+  createTaskAttachment,
   createTasksBulkInTransaction,
+  deleteTaskAttachmentByIdAndUser,
   deleteTaskByIdAndUser,
+  findTaskAttachmentByIdAndUser,
   findTaskByIdAndUser,
   listTasksByUser,
   updateTaskByIdAndUser,
   type HydratedTask,
+  type TaskAttachmentMeta,
   type TaskPriority,
   type TaskStatus,
 } from "../repositories/task.repository.js";
@@ -15,6 +20,14 @@ import {
   findTagsByIdsAndUser,
   listCategoriesByUser,
 } from "../repositories/taxonomy.repository.js";
+import {
+  ALLOWED_ATTACHMENT_MIME_TYPES,
+  decodeAndValidateBase64,
+  MAX_ATTACHMENTS_PER_TASK,
+  normalizeAttachmentMimeType,
+  sanitizeAttachmentFileName,
+  type CreateAttachmentInput,
+} from "../validators/attachment.validator.js";
 import type {
   CreateTaskInput,
   ListTasksQuery,
@@ -293,5 +306,79 @@ export const deleteTaskService = async (
   const deleted = await deleteTaskByIdAndUser(taskId, userId);
   if (!deleted) {
     throw Errors.notFound("Task not found");
+  }
+};
+
+export const addTaskAttachmentService = async (
+  taskId: string,
+  userId: string,
+  input: CreateAttachmentInput,
+): Promise<TaskAttachmentMeta> => {
+  const existingTask = await findTaskByIdAndUser(taskId, userId);
+  if (!existingTask) {
+    throw Errors.notFound("Task not found");
+  }
+
+  const currentCount = await countAttachmentsByTask(taskId, userId);
+  if (currentCount >= MAX_ATTACHMENTS_PER_TASK) {
+    throw Errors.badRequest(
+      `Tasks support up to ${MAX_ATTACHMENTS_PER_TASK} quick attachments`,
+    );
+  }
+
+  const fileName = sanitizeAttachmentFileName(input.fileName);
+  const mimeType = normalizeAttachmentMimeType(input.mimeType, fileName);
+  if (!ALLOWED_ATTACHMENT_MIME_TYPES.has(mimeType)) {
+    throw Errors.badRequest(
+      "Unsupported file type. Allowed: PNG, JPEG, WebP, GIF, PDF, TXT, Markdown, CSV, or JSON.",
+    );
+  }
+
+  const { normalizedBase64, sizeBytes } = decodeAndValidateBase64(
+    input.dataBase64,
+  );
+
+  return createTaskAttachment({
+    taskId,
+    userId,
+    fileName,
+    mimeType,
+    sizeBytes,
+    dataBase64: normalizedBase64,
+  });
+};
+
+export const downloadTaskAttachmentService = async (
+  taskId: string,
+  attachmentId: string,
+  userId: string,
+): Promise<{ fileName: string; mimeType: string; buffer: Buffer }> => {
+  const record = await findTaskAttachmentByIdAndUser(
+    taskId,
+    attachmentId,
+    userId,
+  );
+  if (!record) {
+    throw Errors.notFound("Attachment not found");
+  }
+  return {
+    fileName: sanitizeAttachmentFileName(record.fileName),
+    mimeType: record.mimeType,
+    buffer: Buffer.from(record.dataBase64, "base64"),
+  };
+};
+
+export const deleteTaskAttachmentService = async (
+  taskId: string,
+  attachmentId: string,
+  userId: string,
+): Promise<void> => {
+  const deleted = await deleteTaskAttachmentByIdAndUser(
+    taskId,
+    attachmentId,
+    userId,
+  );
+  if (!deleted) {
+    throw Errors.notFound("Attachment not found");
   }
 };
